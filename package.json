@@ -1,0 +1,12 @@
+{
+  "name": "call-planner",
+  "private": true,
+  "workspaces": ["packages/*", "apps/api", "apps/admin"],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dev:api": "npm run dev -w @call-planner/api",
+    "dev:admin": "npm run dev -w @call-planner/admin",
+    "seed": "npm run seed -w @call-planner/api"
+  }
+}

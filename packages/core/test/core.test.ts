@@ -1,0 +1,193 @@
+import { describe, expect, it } from 'vitest';
+import {
+  evaluateSchedule,
+  generateShifts,
+  halfYearRange,
+  optimizeSchedule,
+  type CallRequest,
+  type Service,
+  type Surgeon,
+} from '../src';
+
+const general: Service = {
+  id: 'gen',
+  name: 'General',
+  coversWeekdayDay: true,
+  coversWeekdayNight: true,
+  coversWeekend: true,
+};
+const trauma: Service = {
+  id: 'trauma',
+  name: 'Trauma',
+  coversWeekdayDay: true,
+  coversWeekdayNight: false,
+  coversWeekend: false,
+};
+
+describe('generateShifts', () => {
+  it('creates day, night and weekend shifts for one week', () => {
+    // 2027-01-04 is a Monday.
+    const shifts = generateShifts({ start: '2027-01-04', end: '2027-01-10', services: [general] });
+    const kinds = shifts.map((s) => `${s.kind}:${s.date}`);
+    expect(kinds.filter((k) => k.startsWith('day'))).toHaveLength(5);
+    expect(kinds.filter((k) => k.startsWith('night'))).toEqual([
+      'night:2027-01-04',
+      'night:2027-01-05',
+      'night:2027-01-06',
+      'night:2027-01-07',
+    ]);
+    const weekend = shifts.find((s) => s.kind === 'weekend')!;
+    expect(weekend.start).toBe('2027-01-08T17:00');
+    expect(weekend.end).toBe('2027-01-11T07:00');
+    const night = shifts.find((s) => s.id === 'gen:night:2027-01-04')!;
+    expect(night.end).toBe('2027-01-05T07:00');
+  });
+
+  it('only creates the coverage a service needs', () => {
+    const shifts = generateShifts({ start: '2027-01-04', end: '2027-01-10', services: [trauma] });
+    expect(shifts.every((s) => s.kind === 'day')).toBe(true);
+    expect(shifts).toHaveLength(5);
+  });
+
+  it('stretches the weekend over a Monday holiday', () => {
+    // 2027-01-18 is MLK day (Monday).
+    const shifts = generateShifts({
+      start: '2027-01-11',
+      end: '2027-01-24',
+      services: [general],
+      holidays: ['2027-01-18'],
+    });
+    const weekend = shifts.find((s) => s.id === 'gen:weekend:2027-01-15')!;
+    expect(weekend.end).toBe('2027-01-19T07:00');
+    expect(weekend.holiday).toBe(true);
+    expect(shifts.find((s) => s.id === 'gen:day:2027-01-18')).toBeUndefined();
+    expect(shifts.find((s) => s.id === 'gen:night:2027-01-18')).toBeUndefined();
+  });
+
+  it('covers a full half year', () => {
+    const { start, end } = halfYearRange(2027, 1);
+    const shifts = generateShifts({ start, end, services: [general] });
+    expect(shifts.filter((s) => s.kind === 'weekend')).toHaveLength(26);
+  });
+});
+
+function surgeons(count: number, serviceIds = ['gen']): Surgeon[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `u${i + 1}`,
+    name: `Surgeon ${i + 1}`,
+    fte: 1,
+    serviceIds,
+  }));
+}
+
+describe('optimizeSchedule', () => {
+  const { start, end } = halfYearRange(2027, 1);
+  const shifts = generateShifts({ start, end, services: [general, trauma] });
+  const team = surgeons(10, ['gen', 'trauma']);
+
+  it('fills every shift without breaking hard rules', () => {
+    const result = optimizeSchedule({ shifts, surgeons: team, requests: [], seed: 7 });
+    expect(result.unassignedShiftIds).toEqual([]);
+    expect(result.violations).toEqual([]);
+    expect(result.assignments).toHaveLength(shifts.length);
+  });
+
+  it('spreads weekends fairly', () => {
+    const result = optimizeSchedule({ shifts, surgeons: team, requests: [], seed: 3 });
+    const weekends = result.stats.map((s) => s.counts.weekend);
+    expect(Math.max(...weekends) - Math.min(...weekends)).toBeLessThanOrEqual(1);
+    const nights = result.stats.map((s) => s.counts.night);
+    expect(Math.max(...nights) - Math.min(...nights)).toBeLessThanOrEqual(2);
+  });
+
+  it('gives a half-FTE surgeon about half the call', () => {
+    const mixed = team.map((s, i) => (i === 0 ? { ...s, fte: 0.5 } : s));
+    const result = optimizeSchedule({ shifts, surgeons: mixed, requests: [], seed: 5 });
+    const half = result.stats.find((s) => s.userId === 'u1')!;
+    const full = result.stats.find((s) => s.userId === 'u2')!;
+    expect(half.counts.weekend).toBeLessThan(full.counts.weekend);
+    expect(half.counts.day + half.counts.night).toBeLessThan(full.counts.day + full.counts.night);
+  });
+
+  it('never schedules approved time off and honours preferences', () => {
+    const requests: CallRequest[] = [
+      { id: 'r1', userId: 'u1', type: 'unavailable', status: 'approved', startDate: '2027-03-01', endDate: '2027-03-14' },
+      { id: 'r2', userId: 'u2', type: 'prefer_off', status: 'pending', startDate: '2027-02-05', endDate: '2027-02-08', shiftKinds: ['weekend'] },
+      { id: 'r3', userId: 'u3', type: 'prefer_on', status: 'pending', startDate: '2027-04-09', endDate: '2027-04-12', shiftKinds: ['weekend'] },
+    ];
+    const result = optimizeSchedule({ shifts, surgeons: team, requests, seed: 11 });
+    expect(result.violations).toEqual([]);
+    expect(result.requestOutcomes.every((o) => o.honored)).toBe(true);
+    const gw = result.assignments.find((a) => a.shiftId === 'gen:weekend:2027-04-09');
+    expect(gw?.userId).toBe('u3');
+  });
+
+  it('keeps locked assignments', () => {
+    const locked = [{ shiftId: 'gen:weekend:2027-01-01', userId: 'u4', locked: true }];
+    const result = optimizeSchedule({ shifts, surgeons: team, requests: [], locked, seed: 2 });
+    expect(result.assignments.find((a) => a.shiftId === 'gen:weekend:2027-01-01')?.userId).toBe('u4');
+  });
+
+  it('leaves a shift open rather than breaking a rule', () => {
+    const tiny = generateShifts({ start: '2027-01-04', end: '2027-01-05', services: [general] });
+    // One surgeon cannot take both the day and the overlapping-rest night.
+    const result = optimizeSchedule({ shifts: tiny, surgeons: surgeons(1), requests: [] });
+    expect(result.violations.filter((v) => v.type !== 'unassigned')).toEqual([]);
+    expect(result.unassignedShiftIds.length).toBeGreaterThan(0);
+  });
+});
+
+describe('evaluateSchedule', () => {
+  it('flags manual edits that break rules', () => {
+    const shifts = generateShifts({ start: '2027-01-04', end: '2027-01-05', services: [general] });
+    const team = surgeons(2);
+    const report = evaluateSchedule({
+      shifts,
+      surgeons: team,
+      requests: [{ id: 'r', userId: 'u2', type: 'unavailable', status: 'approved', startDate: '2027-01-05', endDate: '2027-01-05' }],
+      assignments: [
+        { shiftId: 'gen:day:2027-01-04', userId: 'u1' },
+        { shiftId: 'gen:night:2027-01-04', userId: 'u1' },
+        { shiftId: 'gen:day:2027-01-05', userId: 'u2' },
+      ],
+    });
+    const types = report.violations.map((v) => v.type).sort();
+    expect(types).toEqual(['rest', 'unassigned', 'unavailable']);
+  });
+});
+
+describe('realistic half year', () => {
+  const { start, end } = halfYearRange(2027, 1);
+  const services: Service[] = ['a', 'b', 'c'].map((id) => ({
+    id,
+    name: id,
+    coversWeekdayDay: true,
+    coversWeekdayNight: true,
+    coversWeekend: true,
+  }));
+  const shifts = generateShifts({ start, end, services, holidays: ['2027-01-18', '2027-02-15', '2027-05-31'] });
+  // Mixed credentials and one half-time surgeon.
+  const team: Surgeon[] = Array.from({ length: 14 }, (_, i) => ({
+    id: `u${i + 1}`,
+    name: `Surgeon ${i + 1}`,
+    fte: i === 0 ? 0.5 : 1,
+    serviceIds: i < 5 ? ['a', 'b', 'c'] : i < 10 ? ['a', 'b'] : ['b', 'c'],
+  }));
+  const requests: CallRequest[] = [
+    { id: 'r1', userId: 'u1', type: 'unavailable', status: 'approved', startDate: '2027-03-01', endDate: '2027-03-14' },
+    { id: 'r2', userId: 'u2', type: 'prefer_off', status: 'pending', startDate: '2027-02-05', endDate: '2027-02-08', shiftKinds: ['weekend'] },
+    { id: 'r3', userId: 'u3', type: 'prefer_on', status: 'pending', startDate: '2027-04-09', endDate: '2027-04-12', shiftKinds: ['weekend'] },
+    { id: 'r4', userId: 'u7', type: 'unavailable', status: 'pending', startDate: '2027-05-10', endDate: '2027-05-16' },
+  ];
+
+  it.each([1, 2, 3])('balances load equally per FTE and honours requests (seed %i)', (seed) => {
+    const result = optimizeSchedule({ shifts, surgeons: team, requests, seed });
+    expect(result.violations).toEqual([]);
+    expect(result.requestOutcomes.filter((o) => !o.honored)).toEqual([]);
+    const fullTime = result.stats.slice(1);
+    for (const kind of ['day', 'night', 'weekend'] as const) {
+      const counts = fullTime.map((s) => s.counts[kind]);
+      expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1);
+    }
+  }, 30_000);
+});

@@ -1,0 +1,151 @@
+import { useRef, useState } from 'react';
+import { get, patch, post, type Schedule, type User } from '../api';
+import { useLoad } from '../useLoad';
+
+type Draft = Omit<User, 'id'> & { id?: string; password: string };
+
+const blank: Draft = {
+  name: '',
+  email: '',
+  role: 'surgeon',
+  fte: 1,
+  active: true,
+  takesCall: true,
+  phone: '',
+  serviceIds: [],
+  password: '',
+};
+
+export function PeoplePage({ currentUserId }: { currentUserId: string }) {
+  const { data, error, reload } = useLoad(async () => {
+    const [users, services] = await Promise.all([get<User[]>('/api/users'), get<Schedule['services']>('/api/services')]);
+    return { users, services };
+  });
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
+
+  const open = (d: Draft) => {
+    setDraft(d);
+    setFormError(null);
+    dialog.current?.showModal();
+  };
+
+  const save = async () => {
+    if (!draft) return;
+    try {
+      const { id, password, ...rest } = draft;
+      const body = { ...rest, phone: rest.phone || null, ...(password ? { password } : {}) };
+      if (id) await patch(`/api/users/${id}`, body);
+      else await post('/api/users', { ...body, password });
+      dialog.current?.close();
+      reload();
+    } catch (e) {
+      setFormError((e as Error).message);
+    }
+  };
+
+  const serviceName = new Map(data?.services.map((s) => [s.id, s.name]));
+
+  return (
+    <>
+      <div className="page-head">
+        <div>
+          <h1>Surgeons</h1>
+          <div className="muted">Who takes call, what they can cover, and their share of call (FTE).</div>
+        </div>
+        <button className="primary" onClick={() => open(blank)}>Add person</button>
+      </div>
+      {error && <div className="alert error">{error}</div>}
+      <div className="card" style={{ padding: 0 }}>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Services</th>
+              <th className="num">Call share</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {data?.users.map((u) => (
+              <tr key={u.id} style={u.active ? undefined : { opacity: 0.55 }}>
+                <td>{u.name}</td>
+                <td>{u.email}</td>
+                <td className="small">{u.takesCall ? u.serviceIds.map((s) => serviceName.get(s) ?? s).join(', ') || <span className="badge warn">None</span> : <span className="muted">No call</span>}</td>
+                <td className="num">{u.takesCall ? `${Math.round(u.fte * 100)}%` : '—'}</td>
+                <td>{u.role === 'admin' ? 'Admin' : 'Surgeon'}</td>
+                <td>{u.active ? <span className="badge ok">Active</span> : <span className="badge">Inactive</span>}</td>
+                <td><button className="link" onClick={() => open({ ...u, phone: u.phone ?? '', password: '' })}>Edit</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <dialog ref={dialog}>
+        {draft && data && (
+          <form method="dialog" onSubmit={(e) => (e.preventDefault(), save())}>
+            <h2>{draft.id ? `Edit ${draft.name}` : 'Add person'}</h2>
+            {formError && <div className="alert error">{formError}</div>}
+            <div className="form-grid">
+              <label className="field">Name<input required value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></label>
+              <label className="field">Email<input required type="email" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} /></label>
+              <label className="field">Mobile phone<input value={draft.phone ?? ''} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} /></label>
+              <label className="field">
+                {draft.id ? 'New password (leave blank to keep)' : 'Temporary password'}
+                <input type="password" minLength={8} required={!draft.id} value={draft.password} onChange={(e) => setDraft({ ...draft, password: e.target.value })} />
+              </label>
+              <label className="field">
+                Role
+                <select value={draft.role} disabled={draft.id === currentUserId} onChange={(e) => setDraft({ ...draft, role: e.target.value as User['role'] })}>
+                  <option value="surgeon">Surgeon (mobile app)</option>
+                  <option value="admin">Admin (this console + app)</option>
+                </select>
+              </label>
+              <label className="field">
+                Call share (FTE)
+                <select value={draft.fte} onChange={(e) => setDraft({ ...draft, fte: Number(e.target.value) })}>
+                  {[1, 0.9, 0.8, 0.75, 0.6, 0.5, 0.4, 0.25].map((f) => <option key={f} value={f}>{Math.round(f * 100)}%</option>)}
+                </select>
+              </label>
+              <div className="full row">
+                <label className="check"><input type="checkbox" checked={draft.takesCall} onChange={(e) => setDraft({ ...draft, takesCall: e.target.checked })} /> Takes call</label>
+                <label className="check"><input type="checkbox" checked={draft.active} disabled={draft.id === currentUserId} onChange={(e) => setDraft({ ...draft, active: e.target.checked })} /> Active</label>
+              </div>
+              {draft.takesCall && (
+                <fieldset className="full" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
+                  <legend className="small muted">Can cover</legend>
+                  <div className="row">
+                    {data.services.map((s) => (
+                      <label key={s.id} className="check">
+                        <input
+                          type="checkbox"
+                          checked={draft.serviceIds.includes(s.id)}
+                          onChange={(e) =>
+                            setDraft({
+                              ...draft,
+                              serviceIds: e.target.checked ? [...draft.serviceIds, s.id] : draft.serviceIds.filter((x) => x !== s.id),
+                            })
+                          }
+                        />
+                        {s.name}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
+            </div>
+            <div className="row" style={{ marginTop: 16, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => dialog.current?.close()}>Cancel</button>
+              <button className="primary" type="submit">Save</button>
+            </div>
+          </form>
+        )}
+      </dialog>
+    </>
+  );
+}
