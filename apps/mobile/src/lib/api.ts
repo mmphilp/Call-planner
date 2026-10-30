@@ -66,9 +66,15 @@ export interface CallRequest {
   adminNote: string;
 }
 
-/** Set EXPO_PUBLIC_API_URL to point the app at your server. */
+/**
+ * Set EXPO_PUBLIC_API_URL to point the app at your server. The web build is
+ * served by the API server itself, so there it defaults to the same origin.
+ */
 export const API_URL: string =
-  process.env.EXPO_PUBLIC_API_URL ?? (Constants.expoConfig?.extra?.apiUrl as string | undefined) ?? 'http://localhost:4000';
+  process.env.EXPO_PUBLIC_API_URL ??
+  (Platform.OS === 'web'
+    ? globalThis.location?.origin ?? ''
+    : ((Constants.expoConfig?.extra?.apiUrl as string | undefined) ?? 'http://localhost:4000'));
 
 const TOKEN_KEY = 'call-planner-token';
 

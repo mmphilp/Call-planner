@@ -206,7 +206,8 @@ export function Empty({ title, body }: { title: string; body?: string }) {
 }
 
 const styles = StyleSheet.create({
-  scroll: { padding: 16, paddingBottom: 48, gap: 12 },
+  // Keep a readable column on iPad and desktop browsers.
+  scroll: { padding: 16, paddingBottom: 48, gap: 12, width: '100%', maxWidth: 720, alignSelf: 'center' },
   // On web the tab bar floats over the top of the page.
   header: { flexDirection: 'row', alignItems: 'flex-end', marginBottom: 4, marginTop: Platform.OS === 'web' ? 72 : 8 },
   title: { fontSize: 30, fontWeight: '700' },

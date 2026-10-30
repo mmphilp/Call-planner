@@ -1,5 +1,9 @@
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
+import rateLimit from '@fastify/rate-limit';
+import fastifyStatic from '@fastify/static';
 import Fastify from 'fastify';
 import { openDb, type Db } from './db';
 import { HttpError } from './http';
@@ -26,17 +30,25 @@ export interface AppOptions {
   dbPath?: string;
   jwtSecret: string;
   logger?: boolean;
+  /** Built admin console (apps/admin/dist) to serve from the same origin. */
+  adminDir?: string;
+  /** Web build of the surgeon app (apps/mobile web export), served under /app/. */
+  appDir?: string;
+  /** Set when running behind a reverse proxy or tunnel, so client IPs are real. */
+  trustProxy?: boolean;
 }
 
 export async function buildApp(opts: AppOptions) {
   const db = opts.db ?? openDb(opts.dbPath ?? ':memory:');
-  const app = Fastify({ logger: opts.logger ?? false });
+  const app = Fastify({ logger: opts.logger ?? false, trustProxy: opts.trustProxy ?? false });
 
   await app.register(cors, { origin: true });
   await app.register(jwt, { secret: opts.jwtSecret });
+  // Only routes that opt in (login) are limited.
+  await app.register(rateLimit, { global: false });
 
   app.addHook('onRequest', async (req) => {
-    if (req.routeOptions.config.public || req.method === 'OPTIONS') return;
+    if (!req.url.startsWith('/api/') || req.routeOptions.config.public || req.method === 'OPTIONS') return;
     try {
       await req.jwtVerify();
     } catch {
@@ -58,6 +70,25 @@ export async function buildApp(opts: AppOptions) {
   periodRoutes(app, db);
   requestRoutes(app, db);
   calendarRoutes(app, db);
+
+  const hasBuild = (dir?: string): dir is string => !!dir && existsSync(resolve(dir, 'index.html'));
+  const appDir = hasBuild(opts.appDir) ? resolve(opts.appDir) : null;
+  const adminDir = hasBuild(opts.adminDir) ? resolve(opts.adminDir) : null;
+  if (appDir) {
+    await app.register(fastifyStatic, { root: appDir, prefix: '/app/', decorateReply: !adminDir });
+    app.get('/app', { config: { public: true } }, (_req, reply) => reply.redirect('/app/'));
+  }
+  if (adminDir) await app.register(fastifyStatic, { root: adminDir });
+  if (appDir || adminDir) {
+    // Client-side routes (/periods/…, /app/requests) load the page's index.html.
+    app.setNotFoundHandler((req, reply) => {
+      if (req.method === 'GET' && !req.url.startsWith('/api/') && !req.url.startsWith('/cal/')) {
+        if (appDir && req.url.startsWith('/app/')) return reply.sendFile('index.html', appDir);
+        if (adminDir) return reply.sendFile('index.html', adminDir);
+      }
+      reply.code(404).send({ error: 'Not found' });
+    });
+  }
 
   return { app, db };
 }

@@ -1,0 +1,14 @@
+services:
+  call-planner:
+    build: .
+    image: call-planner
+    container_name: call-planner
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    volumes:
+      - call-planner-data:/data
+    env_file: .env
+
+volumes:
+  call-planner-data:

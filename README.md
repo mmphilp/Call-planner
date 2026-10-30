@@ -68,12 +68,77 @@ npm run typecheck
 cd apps/mobile && npx tsc --noEmit
 ```
 
-## Going to production
+## Self-hosting (Docker)
 
-* **API**: set `JWT_SECRET` (required) and `DATABASE_PATH`, put it behind HTTPS, and back up the SQLite file. Move to Postgres if you need multiple servers.
-* **Admin console**: `npm run build -w @call-planner/admin` and serve `apps/admin/dist`, routing `/api` and `/cal` to the API.
-* **Mobile**: set `EXPO_PUBLIC_API_URL` to the production API. Change the `com.example.callplanner` bundle IDs in `apps/mobile/app.json`, then build and submit with EAS (`npx eas-cli build`, `npx eas-cli submit`). This needs an Apple Developer account and a Google Play Console account.
-* Schedules contain staff names and phone numbers but no patient data. Still, check your hospital's IT/security requirements before hosting.
+One container runs everything on one port:
+
+| URL | What |
+|---|---|
+| `http://<server>:4000/` | Admin console |
+| `http://<server>:4000/app` | Surgeon app (web version; on a phone or iPad use **Share → Add to Home Screen**) |
+| `http://<server>:4000/cal/…` | Each surgeon's calendar feed |
+
+### 1. Start it
+
+On any Linux box with Docker and Docker Compose (a homelab server, NAS or VM):
+
+```bash
+git clone https://github.com/mmphilp/Call-planner.git
+cd Call-planner
+cp .env.example .env
+nano .env            # set JWT_SECRET (openssl rand -base64 48), ADMIN_EMAIL, ADMIN_PASSWORD
+docker compose up -d --build
+```
+
+Open `http://<server-ip>:4000` and sign in with the admin email and password from `.env`. The account is created on the first start with an empty database. Then add services and surgeons, and create your first half-year.
+
+**Optional: demo data instead.** To try it out with the 12 demo surgeons and a sample schedule, run this once *before* the first `up`:
+
+```bash
+docker compose run --rm call-planner node --import tsx apps/api/src/seed.ts
+docker compose up -d
+```
+
+This signs in as `admin@example.com` / `password123`. Remove the demo data before real use with `docker compose down -v`, which **deletes the database**.
+
+### 2. Reach it from outside your home
+
+Surgeons need to reach the server from their phones anywhere, and logins should go over HTTPS. Pick one:
+
+* **Cloudflare Tunnel (recommended).** Free, no port forwarding, and HTTPS is automatic. It needs a domain on Cloudflare. In the Cloudflare dashboard go to Zero Trust → Networks → Tunnels, create a tunnel, point a hostname such as `call.yourdomain.com` at `http://call-planner:4000`, and add the connector to `docker-compose.yml`:
+  ```yaml
+    cloudflared:
+      image: cloudflare/cloudflared:latest
+      restart: unless-stopped
+      command: tunnel run
+      environment:
+        - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+  ```
+  Put `CLOUDFLARE_TUNNEL_TOKEN=…` in `.env` and set `TRUST_PROXY=true`.
+* **A reverse proxy you already run** (Caddy, Traefik, Nginx Proxy Manager). Proxy your domain to port 4000, forward 443 on your router, and set `TRUST_PROXY=true`.
+* **Tailscale.** Good for a private demo (your own devices only). Every surgeon would need Tailscale installed, so it's not a fit for the whole group.
+
+Login attempts are limited to 10 per 15 minutes per IP address.
+
+### 3. Update, back up, view logs
+
+```bash
+git pull && docker compose up -d --build        # update to the latest version
+
+docker compose stop                             # back up (takes a few seconds)
+docker compose cp call-planner:/data/call-planner.db ./backups/call-planner-$(date +%F).db
+docker compose start
+
+docker compose logs -f                          # logs
+```
+
+The database lives in the `call-planner-data` Docker volume, so it survives updates and restarts. Back it up regularly, and keep a copy off the server.
+
+### Native iPhone/Android apps (optional)
+
+The web version at `/app` covers what surgeons need. For App Store / Play Store apps: set `EXPO_PUBLIC_API_URL` to your public URL, change the `com.example.callplanner` bundle IDs in `apps/mobile/app.json`, then build and submit with EAS (`npx eas-cli build`, `npx eas-cli submit`). This needs an Apple Developer account and a Google Play Console account. Any build has to reach the server over HTTPS.
+
+Schedules contain staff names and phone numbers but no patient data. Still, check your hospital's IT/security requirements before hosting.
 
 ## Not built yet
 

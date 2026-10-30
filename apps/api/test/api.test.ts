@@ -51,6 +51,14 @@ describe('auth', () => {
     expect(me.body.calendarPath).toMatch(/^\/cal\/.+\.ics$/);
   });
 
+  it('rate-limits repeated login attempts', async () => {
+    const statuses = [];
+    for (let i = 0; i < 12; i++) {
+      statuses.push((await call(null, 'POST', '/api/auth/login', { email: 's1@x.org', password: 'wrong' })).status);
+    }
+    expect(statuses.at(-1)).toBe(429);
+  });
+
   it('keeps admin endpoints away from surgeons', async () => {
     expect((await call(surgeonTokens[0], 'GET', '/api/users')).status).toBe(403);
     expect((await call(surgeonTokens[0], 'POST', '/api/periods', { year: 2027, half: 1 })).status).toBe(403);

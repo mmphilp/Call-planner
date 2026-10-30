@@ -18,7 +18,7 @@ export default function TabsLayout() {
   if (!user) return <Redirect href="/login" />;
 
   return (
-    <NativeTabs backgroundColor={t.card} labelStyle={{ selected: { color: t.accent } }}>
+    <NativeTabs backgroundColor={t.card} indicatorColor={t.bg} labelStyle={{ selected: { color: t.accent } }}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>My Call</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="calendar" md="event" />

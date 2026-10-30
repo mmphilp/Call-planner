@@ -56,7 +56,10 @@ export function createUser(db: Db, input: z.input<typeof userBody>) {
 }
 
 export function peopleRoutes(app: FastifyInstance, db: Db) {
-  app.post('/api/auth/login', { config: { public: true } }, async (req) => {
+  app.post(
+    '/api/auth/login',
+    { config: { public: true, rateLimit: { max: 10, timeWindow: '15 minutes' } } },
+    async (req) => {
     const { email, password } = parse(z.object({ email: z.string(), password: z.string() }), req.body);
     const row = getUserRowByEmail(db, email.trim());
     if (!row || !row.active || !verifyPassword(password, row.password_hash)) {
@@ -64,7 +67,8 @@ export function peopleRoutes(app: FastifyInstance, db: Db) {
     }
     const token = app.jwt.sign({ sub: row.id }, { expiresIn: '30d' });
     return { token, user: getUser(db, row.id) };
-  });
+    },
+  );
 
   app.get('/api/me', async (req) => {
     const row = db.prepare('SELECT calendar_token FROM users WHERE id = ?').get(me(req).id) as {
