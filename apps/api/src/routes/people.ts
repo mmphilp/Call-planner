@@ -6,26 +6,44 @@ import { httpError, me, parse, requireAdmin } from '../http';
 import { hashPassword, verifyPassword } from '../passwords';
 import { getUser, getUserRowByEmail, listServices, listUsers, setUserServices, toService } from '../repo';
 
-const userBody = z.object({
+// Field rules without defaults, so partial updates (PATCH) only touch the
+// fields actually sent. Creating applies the defaults.
+const userFields = z.object({
   email: z.string().email(),
   name: z.string().min(1),
-  role: z.enum(['admin', 'surgeon']).default('surgeon'),
-  fte: z.number().min(0).max(1.5).default(1),
-  active: z.boolean().default(true),
-  takesCall: z.boolean().default(true),
+  role: z.enum(['admin', 'surgeon']),
+  fte: z.number().min(0).max(1.5),
+  active: z.boolean(),
+  takesCall: z.boolean(),
   phone: z.string().nullable().optional(),
-  serviceIds: z.array(z.string()).default([]),
+  serviceIds: z.array(z.string()),
   password: z.string().min(8),
 });
-
-const serviceBody = z.object({
-  name: z.string().min(1),
-  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#2563eb'),
-  coversWeekdayDay: z.boolean().default(true),
-  coversWeekdayNight: z.boolean().default(true),
-  coversWeekend: z.boolean().default(true),
-  sort: z.number().int().default(0),
+const userBody = userFields.extend({
+  role: userFields.shape.role.default('surgeon'),
+  fte: userFields.shape.fte.default(1),
+  active: userFields.shape.active.default(true),
+  takesCall: userFields.shape.takesCall.default(true),
+  serviceIds: userFields.shape.serviceIds.default([]),
 });
+const userPatch = userFields.partial();
+
+const serviceFields = z.object({
+  name: z.string().min(1),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  coversWeekdayDay: z.boolean(),
+  coversWeekdayNight: z.boolean(),
+  coversWeekend: z.boolean(),
+  sort: z.number().int(),
+});
+const serviceBody = serviceFields.extend({
+  color: serviceFields.shape.color.default('#2563eb'),
+  coversWeekdayDay: serviceFields.shape.coversWeekdayDay.default(true),
+  coversWeekdayNight: serviceFields.shape.coversWeekdayNight.default(true),
+  coversWeekend: serviceFields.shape.coversWeekend.default(true),
+  sort: serviceFields.shape.sort.default(0),
+});
+const servicePatch = serviceFields.partial();
 
 export function newCalendarToken() {
   return randomBytes(24).toString('base64url');
@@ -102,7 +120,7 @@ export function peopleRoutes(app: FastifyInstance, db: Db) {
     requireAdmin(req);
     const existing = getUser(db, req.params.id);
     if (!existing) throw httpError(404, 'User not found');
-    const body = parse(userBody.partial(), req.body);
+    const body = parse(userPatch, req.body);
     if (req.params.id === me(req).id && (body.role === 'surgeon' || body.active === false)) {
       throw httpError(400, 'You cannot remove your own admin access');
     }
@@ -142,7 +160,7 @@ export function peopleRoutes(app: FastifyInstance, db: Db) {
 
   app.patch<{ Params: { id: string } }>('/api/services/:id', async (req) => {
     requireAdmin(req);
-    const s = parse(serviceBody.partial(), req.body);
+    const s = parse(servicePatch, req.body);
     const cols: Record<string, unknown> = {
       name: s.name,
       color: s.color,

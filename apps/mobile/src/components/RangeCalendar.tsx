@@ -68,16 +68,13 @@ export function RangeCalendar({
                 disabled={disabled}
                 onPress={() => tap(d)}
                 accessibilityLabel={d}
-                style={[
-                  styles.cell,
-                  styles.day,
-                  inRange && { backgroundColor: t.bg },
-                  isEnd && { backgroundColor: t.accent, borderRadius: 999 },
-                ]}
+                style={[styles.cell, styles.day, inRange && { backgroundColor: t.bg }]}
               >
-                <Text style={{ color: isEnd ? t.accentText : disabled ? t.border : t.text, fontWeight: isEnd ? '700' : '400' }}>
-                  {Number(d.slice(8))}
-                </Text>
+                <View style={[styles.dot, isEnd && { backgroundColor: t.accent }]}>
+                  <Text style={{ color: isEnd ? t.accentText : disabled ? t.border : t.text, fontWeight: isEnd ? '700' : '400' }}>
+                    {Number(d.slice(8))}
+                  </Text>
+                </View>
               </Pressable>
             );
           })}
@@ -88,11 +85,13 @@ export function RangeCalendar({
 }
 
 const styles = StyleSheet.create({
-  wrap: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 10 },
-  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 8, paddingBottom: 8 },
-  nav: { fontSize: 28, lineHeight: 30, paddingHorizontal: 8 },
+  // Fixed-size cells keep the calendar compact on wide screens (iPad, desktop).
+  wrap: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 10, width: '100%', maxWidth: 360, alignSelf: 'center' },
+  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4, paddingBottom: 6 },
+  nav: { fontSize: 26, lineHeight: 28, paddingHorizontal: 8 },
   row: { flexDirection: 'row' },
-  cell: { flex: 1, aspectRatio: 1, alignItems: 'center', justifyContent: 'center', textAlign: 'center' },
-  dow: { aspectRatio: undefined, paddingVertical: 4, fontSize: 12 },
-  day: {},
+  cell: { flex: 1, height: 40, alignItems: 'center', justifyContent: 'center', textAlign: 'center' },
+  dow: { height: 24, lineHeight: 24, fontSize: 12 },
+  day: { marginVertical: 1 },
+  dot: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
 });

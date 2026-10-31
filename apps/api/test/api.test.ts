@@ -65,6 +65,22 @@ describe('auth', () => {
   });
 });
 
+describe('partial updates', () => {
+  it('only changes the fields sent', async () => {
+    const svc = await call(adminToken, 'PATCH', '/api/services/hand', { color: '#ff0000' });
+    expect(svc.body).toMatchObject({ color: '#ff0000', coversWeekdayDay: true, coversWeekdayNight: false, coversWeekend: false });
+
+    const users = (await call(adminToken, 'GET', '/api/users')).body;
+    const admin = users.find((u: any) => u.email === 'admin@x.org');
+    const s1 = users.find((u: any) => u.email === 's1@x.org');
+    await call(adminToken, 'PATCH', `/api/users/${s1.id}`, { fte: 0.5 });
+    await call(adminToken, 'PATCH', `/api/users/${admin.id}`, { name: 'Renamed' });
+    const after = (await call(adminToken, 'GET', '/api/users')).body;
+    expect(after.find((u: any) => u.id === s1.id)).toMatchObject({ fte: 0.5, serviceIds: s1.serviceIds, role: 'surgeon' });
+    expect(after.find((u: any) => u.id === admin.id)).toMatchObject({ name: 'Renamed', role: 'admin', takesCall: false });
+  });
+});
+
 describe('full scheduling workflow', () => {
   it('collects requests, optimizes, edits, publishes and shares the schedule', async () => {
     const created = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2, holidays: ['2027-09-06'] });

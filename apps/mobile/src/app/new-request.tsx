@@ -59,7 +59,7 @@ export default function NewRequestScreen() {
   const min = period ? (period.startDate > todayStr() ? period.startDate : todayStr()) : todayStr();
 
   return (
-    <ScrollView style={{ backgroundColor: t.bg }} contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 48 }}>
+    <ScrollView style={{ backgroundColor: t.bg }} contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 48, width: '100%', maxWidth: 560, alignSelf: 'center' }}>
       <ErrorText message={error} />
       {period && <T muted>{period.label}</T>}
 
