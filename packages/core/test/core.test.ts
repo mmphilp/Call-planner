@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyTeamRules,
   evaluateSchedule,
   generateShifts,
   halfYearRange,
   optimizeSchedule,
+  planWeeks,
+  weekStart,
   type CallRequest,
   type Service,
   type Surgeon,
@@ -236,4 +239,56 @@ describe('preferred rest', () => {
     expect(soft.unfilled).toBe(0);
     expect(soft.short).toBeLessThanOrEqual(ignored.short);
   });
+});
+
+describe('small teams', () => {
+  const { start, end } = halfYearRange(2027, 1);
+  const crs: Service = { id: 'crs', name: 'Colorectal', coversWeekdayDay: true, coversWeekdayNight: true, coversWeekend: false, weekdayMode: 'week' };
+  const endo: Service = { id: 'endo', name: 'Endocrine', coversWeekdayDay: true, coversWeekdayNight: true, coversWeekend: false, weekdayMode: 'week' };
+  const shared: Service = { id: 'wk', name: 'Specialty Coverage', coversWeekdayDay: false, coversWeekdayNight: false, coversWeekend: true };
+  const services = [crs, endo, shared];
+  const team: Surgeon[] = [
+    { id: 'philp', name: 'P', fte: 1, serviceIds: ['crs', 'wk'] },
+    { id: 'goda', name: 'G', fte: 1, serviceIds: ['crs', 'wk'] },
+    { id: 'kuo', name: 'K', fte: 1, serviceIds: ['endo', 'wk'] },
+    { id: 'soans', name: 'S', fte: 1, serviceIds: ['wk'] },
+  ];
+  const shifts = applyTeamRules(generateShifts({ start, end, services }), services);
+  const requests: CallRequest[] = [
+    // Philp is away Wed–Fri one week, so Goda should take that whole week.
+    { id: 'r1', userId: 'philp', type: 'unavailable', status: 'approved', startDate: '2027-03-10', endDate: '2027-03-12' },
+    // Both colorectal surgeons are away part of this week: it is filled day by day.
+    { id: 'r2', userId: 'philp', type: 'unavailable', status: 'approved', startDate: '2027-04-05', endDate: '2027-04-06' },
+    { id: 'r3', userId: 'goda', type: 'unavailable', status: 'approved', startDate: '2027-04-08', endDate: '2027-04-09' },
+  ];
+
+  it('gives whole weeks to one surgeon, alternating, and fills split weeks by day', () => {
+    const weeks = planWeeks({ shifts, surgeons: team, requests, services, seed: 1 });
+    const result = optimizeSchedule({ shifts, surgeons: team, requests, locked: weeks, seed: 1 });
+    expect(result.violations).toEqual([]);
+    expect(result.unassignedShiftIds).toEqual([]);
+    const who = new Map(result.assignments.map((a) => [a.shiftId, a.userId]));
+
+    // Every endocrine weekday shift goes to the team of one.
+    expect(shifts.filter((s) => s.serviceId === 'endo').every((s) => who.get(s.id) === 'kuo')).toBe(true);
+
+    // Colorectal weeks: one owner each (except the split week), split evenly, rarely back to back.
+    const byWeek = new Map<string, Set<string>>();
+    for (const s of shifts.filter((s) => s.serviceId === 'crs')) {
+      const wk = weekStart(s.date);
+      byWeek.set(wk, (byWeek.get(wk) ?? new Set()).add(who.get(s.id)!));
+    }
+    const split = [...byWeek].filter(([, owners]) => owners.size > 1).map(([wk]) => wk);
+    expect(split).toEqual(['2027-04-05']);
+    expect([...byWeek.get('2027-03-08')!]).toEqual(['goda']);
+    const owners = [...byWeek].filter(([wk]) => !split.includes(wk)).map(([, o]) => [...o][0]);
+    const philpWeeks = owners.filter((o) => o === 'philp').length;
+    expect(Math.abs(philpWeeks - (owners.length - philpWeeks))).toBeLessThanOrEqual(2);
+    const repeats = owners.filter((o, i) => i > 0 && o === owners[i - 1]).length;
+    expect(repeats).toBeLessThanOrEqual(3);
+
+    // Weekends are still shared by everyone.
+    const weekends = result.stats.map((s) => s.counts.weekend);
+    expect(Math.max(...weekends) - Math.min(...weekends)).toBeLessThanOrEqual(1);
+  }, 30_000);
 });

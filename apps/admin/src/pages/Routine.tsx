@@ -32,6 +32,16 @@ export function RoutinePage() {
   );
   const current = new Map(data.routine.map((r) => [`${r.serviceId}|${r.kind}|${r.weekday}`, r.userId]));
 
+  const saveSettings = async (serviceId: string, settings: { weekdayMode?: 'shift' | 'week'; weekdayRules?: boolean }) => {
+    setMsg(null);
+    try {
+      const updated = await put<Schedule['services'][number]>('/api/routine/settings', { serviceId, ...settings });
+      setData({ ...data, services: data.services.map((s) => (s.id === serviceId ? { ...s, ...updated } : s)) });
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  };
+
   const set = async (serviceId: string, kind: 'day' | 'night', weekday: number, userId: string) => {
     setMsg(null);
     try {
@@ -48,15 +58,12 @@ export function RoutinePage() {
       <div className="page-head">
         <div>
           <h1>Weekday call</h1>
-          <div className="muted">
-            Routine days: who always takes a given weekday. Leave a day on <b>Rotate</b> and the optimizer shares it out.
-          </div>
+          <div className="muted">How each team covers weekday call: whole weeks, or day by day with optional routine days.</div>
         </div>
       </div>
       {msg && <div className="alert error">{msg}</div>}
       <div className="alert info small">
-        When a schedule is optimized, routine days are filled first, except on holidays or when that surgeon has time off; those
-        go to the rest of the team. Routine days count toward each surgeon’s fair share. Changes apply the next time you optimize.
+        Changes apply the next time the schedule is optimized. Each team’s fair share is worked out within the team.
         {!isSuper && ' Weekends are scheduled by the overall admin.'}
       </div>
 
@@ -84,7 +91,30 @@ export function RoutinePage() {
               <p className="muted small" style={{ marginTop: -6 }}>
                 Team: {members.map((m) => m.name).join(', ') || 'nobody set up to cover this service yet'}
               </p>
+              <div className="row" style={{ gap: 18, marginBottom: 10 }}>
+                <label className="check">
+                  <input type="radio" name={`mode-${s.id}`} checked={s.weekdayMode === 'week'} onChange={() => saveSettings(s.id, { weekdayMode: 'week' })} />
+                  <span><b>One surgeon per week</b> <span className="muted small">— Mon–Fri days and nights to one person</span></span>
+                </label>
+                <label className="check">
+                  <input type="radio" name={`mode-${s.id}`} checked={s.weekdayMode !== 'week'} onChange={() => saveSettings(s.id, { weekdayMode: 'shift' })} />
+                  <span><b>Day by day</b> <span className="muted small">— with routine days below</span></span>
+                </label>
+              </div>
+              {s.weekdayMode === 'week' ? (
+                <p className="small muted">
+                  Each week goes to a surgeon who is free all week, alternating and shared fairly by FTE
+                  {members.length === 1 ? ` (with one surgeon on the team, ${members[0].name} gets every week they’re available)` : ''}.
+                  Weeks nobody can take whole are filled day by day. Rest and night limits don’t apply to week-long call.
+                </p>
+              ) : (
+                <label className="check small" style={{ marginBottom: 10 }}>
+                  <input type="checkbox" checked={s.weekdayRules !== false} onChange={(e) => saveSettings(s.id, { weekdayRules: e.target.checked })} />
+                  Apply rest and nights-per-week limits to this team (turn off for small teams on home call)
+                </label>
+              )}
             </div>
+            {s.weekdayMode !== 'week' && (
             <table>
               <thead>
                 <tr>
@@ -116,6 +146,7 @@ export function RoutinePage() {
                 ))}
               </tbody>
             </table>
+            )}
           </div>
         );
       })}

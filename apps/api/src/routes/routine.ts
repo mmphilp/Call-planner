@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Db } from '../db';
 import { canEditService, httpError, me, parse, requireScheduler } from '../http';
-import { listRoutine } from '../repo';
+import { listRoutine, toService } from '../repo';
 
 /**
  * Routine weekday call: a surgeon who always takes, say, Monday day call for
@@ -12,6 +12,27 @@ export function routineRoutes(app: FastifyInstance, db: Db) {
   app.get('/api/routine', async (req) => {
     requireScheduler(req);
     return listRoutine(db);
+  });
+
+  /** How a team covers weekdays: day by day or week-long, and whether rest rules apply. */
+  app.put('/api/routine/settings', async (req) => {
+    requireScheduler(req);
+    const body = parse(
+      z.object({
+        serviceId: z.string(),
+        weekdayMode: z.enum(['shift', 'week']).optional(),
+        weekdayRules: z.boolean().optional(),
+      }),
+      req.body,
+    );
+    if (!canEditService(me(req), body.serviceId)) throw httpError(403, 'You can only change your own team');
+    if (body.weekdayMode) db.prepare('UPDATE services SET weekday_mode = ? WHERE id = ?').run(body.weekdayMode, body.serviceId);
+    if (body.weekdayRules !== undefined) {
+      db.prepare('UPDATE services SET weekday_rules = ? WHERE id = ?').run(body.weekdayRules ? 1 : 0, body.serviceId);
+    }
+    const row = db.prepare('SELECT * FROM services WHERE id = ?').get(body.serviceId);
+    if (!row) throw httpError(404, 'Service not found');
+    return toService(row as any);
   });
 
   app.put('/api/routine', async (req) => {

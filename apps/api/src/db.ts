@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS services (
   covers_day INTEGER NOT NULL DEFAULT 1,
   covers_night INTEGER NOT NULL DEFAULT 1,
   covers_weekend INTEGER NOT NULL DEFAULT 1,
+  -- 'shift': fill each weekday day/night separately; 'week': one surgeon per week.
+  weekday_mode TEXT NOT NULL DEFAULT 'shift' CHECK (weekday_mode IN ('shift', 'week')),
+  -- Apply rest / nights-per-week limits to this team's weekday call.
+  weekday_rules INTEGER NOT NULL DEFAULT 1,
   sort INTEGER NOT NULL DEFAULT 0
 );
 
@@ -114,6 +118,11 @@ export function openDb(path: string): Db {
 function migrate(db: Db) {
   const shiftCols = (db.prepare('PRAGMA table_info(shifts)').all() as { name: string }[]).map((c) => c.name);
   if (!shiftCols.includes('covered_by')) db.exec('ALTER TABLE shifts ADD COLUMN covered_by TEXT');
+  const serviceCols = (db.prepare('PRAGMA table_info(services)').all() as { name: string }[]).map((c) => c.name);
+  if (!serviceCols.includes('weekday_mode')) {
+    db.exec(`ALTER TABLE services ADD COLUMN weekday_mode TEXT NOT NULL DEFAULT 'shift' CHECK (weekday_mode IN ('shift', 'week'))`);
+  }
+  if (!serviceCols.includes('weekday_rules')) db.exec('ALTER TABLE services ADD COLUMN weekday_rules INTEGER NOT NULL DEFAULT 1');
 }
 
 export function transaction<T>(db: Db, fn: () => T): T {

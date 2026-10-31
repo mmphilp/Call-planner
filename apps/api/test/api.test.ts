@@ -158,6 +158,33 @@ describe('team admins and routine days', () => {
   }, 30_000);
 });
 
+describe('week-long teams', () => {
+  it('gives each week of a week-mode team to one surgeon', async () => {
+    const users = (await call(adminToken, 'GET', '/api/users')).body;
+    const s1 = users.find((u: any) => u.email === 's1@x.org').id;
+    await call(adminToken, 'PATCH', `/api/users/${s1}`, { adminServiceIds: ['hand'] });
+    const lead = surgeonTokens[0];
+    expect((await call(lead, 'PUT', '/api/routine/settings', { serviceId: 'general', weekdayMode: 'week' })).status).toBe(403);
+    const set = await call(lead, 'PUT', '/api/routine/settings', { serviceId: 'hand', weekdayMode: 'week' });
+    expect(set.body).toMatchObject({ id: 'hand', weekdayMode: 'week' });
+
+    const { body: p } = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2 });
+    const opt = await call(lead, 'POST', `/api/periods/${p.id}/optimize`, { seed: 1 });
+    expect(opt.body.unassignedShiftIds).toEqual([]);
+    expect(opt.body.weekCount).toBeGreaterThan(20);
+    const sched = (await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`)).body;
+    const who = new Map(sched.assignments.map((a: any) => [a.shiftId, a.userId]));
+    const owners = new Map<string, Set<string>>();
+    for (const s of sched.shifts.filter((x: any) => x.serviceId === 'hand')) {
+      const d = new Date(`${s.date}T00:00Z`);
+      d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+      const wk = d.toISOString().slice(0, 10);
+      owners.set(wk, (owners.get(wk) ?? new Set()).add(who.get(s.id) as string));
+    }
+    expect([...owners.values()].every((o) => o.size === 1)).toBe(true);
+  }, 30_000);
+});
+
 describe('full scheduling workflow', () => {
   it('collects requests, optimizes, edits, publishes and shares the schedule', async () => {
     const created = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2, holidays: ['2027-09-06'] });

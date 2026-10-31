@@ -142,26 +142,24 @@ class Model {
       return m;
     });
 
-    // Fair share: every surgeon who can work a kind of shift carries the same
-    // load per FTE, regardless of how many services they are credentialed for.
+    // Fair share, per kind of shift: surgeons who can cover the same services
+    // form a pool (a team, or the whole group for shared weekends), and
+    // everyone in a pool carries the same load per FTE. Pools are linked
+    // through shared services, so overlapping credentials still balance.
     for (const u of input.surgeons) {
       this.targets.set(u.id, { day: 0, night: 0, weekend: 0 });
       this.holidayTargets.set(u.id, 0);
     }
-    const coveredBy = (u: Surgeon, kind: ShiftKind) =>
-      this.info.some(({ shift }) => shift.kind === kind && u.serviceIds.includes(shift.serviceId));
     for (const kind of SHIFT_KINDS) {
-      const ofKind = this.info.filter(({ shift }) => shift.kind === kind);
-      const pool = input.surgeons.filter((u) => coveredBy(u, kind));
-      const totalFte = pool.reduce((s, u) => s + u.fte, 0);
-      if (!totalFte) continue;
-      const holidayCount = ofKind.filter(({ shift }) => shift.holiday).length;
-      for (const u of pool) {
-        this.targets.get(u.id)![kind] = (ofKind.length * u.fte) / totalFte;
-        this.holidayTargets.set(
-          u.id,
-          this.holidayTargets.get(u.id)! + (holidayCount * u.fte) / totalFte,
-        );
+      const ofKind = this.info.filter(({ shift }) => shift.kind === kind).map(({ shift }) => shift);
+      for (const { members, shifts } of pools(input.surgeons, ofKind)) {
+        const totalFte = members.reduce((s, u) => s + u.fte, 0);
+        if (!totalFte) continue;
+        const holidayCount = shifts.filter((s) => s.holiday).length;
+        for (const u of members) {
+          this.targets.get(u.id)![kind] = (shifts.length * u.fte) / totalFte;
+          this.holidayTargets.set(u.id, this.holidayTargets.get(u.id)! + (holidayCount * u.fte) / totalFte);
+        }
       }
     }
   }
@@ -174,7 +172,9 @@ class Model {
       const prev = this.info[list[i - 1]];
       const cur = this.info[list[i]];
       const gapHours = (cur.startMin - prev.endMin) / 60;
-      if (gapHours < r.minRestHours) {
+      // Teams that work in weeks (or opt out) don't apply rest rules to their weekday call.
+      const relaxed = prev.shift.relaxed || cur.shift.relaxed;
+      if (gapHours < (relaxed ? 0 : r.minRestHours)) {
         out.push({
           type: 'rest',
           shiftIds: [prev.shift.id, cur.shift.id],
@@ -187,7 +187,7 @@ class Model {
     }
     const nights = new Map<string, number[]>();
     for (const i of list) {
-      if (this.info[i].shift.kind !== 'night') continue;
+      if (this.info[i].shift.kind !== 'night' || this.info[i].shift.relaxed) continue;
       const wk = this.info[i].week;
       nights.set(wk, [...(nights.get(wk) ?? []), i]);
     }
@@ -238,14 +238,47 @@ class Model {
     for (let i = 1; i < list.length; i++) {
       const prev = this.info[list[i - 1]];
       const cur = this.info[list[i]];
+      // Within a week-long / small team's weekday call, back-to-back is the
+      // norm, so it costs nothing. Running from that into a weekend only gets
+      // the light spacing cost: enough to pick who takes a weekend, never
+      // enough to unbalance weekends for a one-person team that can't avoid it.
+      if (prev.shift.relaxed && cur.shift.relaxed) continue;
       const days = (cur.startMin - prev.startMin) / 1440;
       if (days < r.preferredSpacingDays) {
         cost += r.weights.spacing * (r.preferredSpacingDays - days);
       }
-      if ((cur.startMin - prev.endMin) / 60 < r.preferredRestHours) cost += r.weights.shortRest;
+      const mixed = prev.shift.relaxed || cur.shift.relaxed;
+      if (!mixed && (cur.startMin - prev.endMin) / 60 < r.preferredRestHours) cost += r.weights.shortRest;
     }
     return { soft: cost, hard: this.hardViolations(list).length };
   }
+}
+
+/**
+ * Group surgeons into pools that share the given shifts: two surgeons are in
+ * the same pool when they can both cover some service (directly or through
+ * colleagues). Each pool gets the shifts of its services.
+ */
+function pools(surgeons: Surgeon[], shifts: Shift[]): { members: Surgeon[]; shifts: Shift[] }[] {
+  const services = new Set(shifts.map((s) => s.serviceId));
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    while (parent.get(x) !== x) x = parent.get(x)!;
+    return x;
+  };
+  for (const id of services) parent.set(id, id);
+  for (const u of surgeons) {
+    const mine = u.serviceIds.filter((id) => services.has(id));
+    for (const id of mine.slice(1)) parent.set(find(id), find(mine[0]));
+  }
+  const out = new Map<string, { members: Surgeon[]; shifts: Shift[] }>();
+  for (const id of services) if (!out.has(find(id))) out.set(find(id), { members: [], shifts: [] });
+  for (const s of shifts) out.get(find(s.serviceId))!.shifts.push(s);
+  for (const u of surgeons) {
+    const first = u.serviceIds.find((id) => services.has(id));
+    if (first) out.get(find(first))!.members.push(u);
+  }
+  return [...out.values()];
 }
 
 /** Does a request's date range (and shift-kind filter) touch this shift? */

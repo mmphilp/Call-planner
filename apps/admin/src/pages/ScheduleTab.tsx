@@ -14,6 +14,7 @@ const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 interface OptimizeSummary {
   unassignedShiftIds: string[];
   routineCount: number;
+  weekCount?: number;
   violations: unknown[];
   requestOutcomes: { honored: boolean }[];
 }
@@ -217,6 +218,7 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
             Optimized: {poolCount - summary.unassignedShiftIds.length} of {poolCount} shifts filled
             {locumCount > 0 && ` (plus ${locumCount} covered by locums)`},{' '}
             {summary.requestOutcomes.filter((o) => o.honored).length} of {summary.requestOutcomes.length} requests honored
+            {!!summary.weekCount && `, ${summary.weekCount} team-weeks given to one surgeon`}
             {summary.routineCount > 0 && `, ${summary.routineCount} routine days applied`}.
             {summary.unassignedShiftIds.length > 0 && ' Some shifts could not be filled without breaking a rule. Fill them by hand or relax a rule.'}
           </div>

@@ -31,6 +31,12 @@ Call scheduling for a surgical group: surgeons send requests from an iPhone/Andr
   * see requests and fairness, read-only.
 
   Weekends, surgeons, services, rules, request approvals and publishing stay with the overall admin.
+* **Week-long teams** (*Weekday call* page). A team can cover weekdays **one surgeon per week**: Monday through Friday days and Monday–Thursday nights.
+  * Whole weeks go to whoever is free all week, alternating and shared fairly by FTE.
+  * A one-person team gets every week its surgeon is available.
+  * Weeks nobody can take whole are filled day by day.
+  * Rest and nights-per-week limits don't apply to week-long call. Day-by-day teams can switch them off too, e.g. small teams on home call.
+  * Fair share is worked out within each team, and weekends across everyone.
 * **Routine days** (*Weekday call* page). Pick who always takes a given weekday's day or night shift, e.g. Mon/Wed days. When the schedule is optimized, routine days are filled first, except on holidays or when that surgeon has time off. They count toward fair share, and everything left on *Rotate* is shared out.
 * **Locums.** In any shift's dropdown, choose *Locum / outside cover…*. That shift is then left out of the optimizer and the fair-share math.
 * **Scope.** The overall admin can optimize *Everything*, *Weekends only*, or one team's weekdays.

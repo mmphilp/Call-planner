@@ -124,7 +124,7 @@ export function callPool(db: Db): Surgeon[] {
     .map((u) => ({ id: u.id, name: u.name, fte: u.fte, serviceIds: u.serviceIds }));
 }
 
-export function toService(r: Row): Service & { sort: number } {
+export function toService(r: Row): Service & { sort: number; weekdayMode: 'shift' | 'week'; weekdayRules: boolean } {
   return {
     id: r.id,
     name: r.name,
@@ -132,6 +132,8 @@ export function toService(r: Row): Service & { sort: number } {
     coversWeekdayDay: !!r.covers_day,
     coversWeekdayNight: !!r.covers_night,
     coversWeekend: !!r.covers_weekend,
+    weekdayMode: r.weekday_mode === 'week' ? 'week' : 'shift',
+    weekdayRules: !!r.weekday_rules,
     sort: r.sort,
   };
 }

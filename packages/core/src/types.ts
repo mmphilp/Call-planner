@@ -15,6 +15,13 @@ export interface Service {
   coversWeekdayDay: boolean;
   coversWeekdayNight: boolean;
   coversWeekend: boolean;
+  /**
+   * How the team covers weekdays: 'shift' fills each day/night separately;
+   * 'week' gives one surgeon the whole Mon–Fri week where possible.
+   */
+  weekdayMode?: 'shift' | 'week';
+  /** Apply rest / nights-per-week limits to this team's weekday call (default true; never in week mode). */
+  weekdayRules?: boolean;
 }
 
 export interface Shift {
@@ -26,6 +33,8 @@ export interface Shift {
   start: LocalDateTime;
   end: LocalDateTime;
   holiday?: boolean;
+  /** Exempt from rest and nights-per-week rules (small teams, week-long call). */
+  relaxed?: boolean;
 }
 
 export interface Surgeon {

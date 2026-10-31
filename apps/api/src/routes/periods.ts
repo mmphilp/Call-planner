@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import {
+  applyTeamRules,
   dayOfWeek,
   DEFAULT_RULES,
   evaluateSchedule,
   generateShifts,
   halfYearRange,
   optimizeSchedule,
+  planWeeks,
   requestCovers,
+  weekStart,
   type Assignment,
   type Half,
   type Shift,
@@ -181,7 +184,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
 
   const report = (p: Period) =>
     evaluateSchedule({
-      shifts: poolShifts(db, p.id),
+      shifts: applyTeamRules(poolShifts(db, p.id), listServices(db)),
       surgeons: callPool(db),
       requests: listRequests(db, { periodId: p.id }),
       rules: p.rules,
@@ -219,7 +222,12 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
 
   /** Routine weekday assignments that apply to these shifts (skipping holidays and time off). */
   const routineFor = (shifts: Shift[], periodId: string, poolIds: Set<string>): Assignment[] => {
-    const routine = new Map(listRoutine(db).map((r) => [`${r.serviceId}|${r.kind}|${r.weekday}`, r.userId]));
+    const weekly = new Set(listServices(db).filter((s) => s.weekdayMode === 'week').map((s) => s.id));
+    const routine = new Map(
+      listRoutine(db)
+        .filter((r) => !weekly.has(r.serviceId))
+        .map((r) => [`${r.serviceId}|${r.kind}|${r.weekday}`, r.userId]),
+    );
     if (!routine.size) return [];
     const eligible = new Map(callPool(db).map((u) => [u.id, new Set(u.serviceIds)]));
     const away = listRequests(db, { periodId }).filter((r) => r.type === 'unavailable' && r.status !== 'denied');
@@ -241,7 +249,10 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     const pool = callPool(db);
     const inPool = new Set(pool.map((u) => u.id));
 
-    const all = poolShifts(db, p.id);
+    const services = listServices(db);
+    const all = applyTeamRules(poolShifts(db, p.id), services);
+    const requests = listRequests(db, { periodId: p.id });
+    const seed = body.seed ?? Math.floor(Math.random() * 1e9);
     const current = listAssignments(db, p.id).filter((a) => inPool.has(a.userId));
     const byShift = new Map(current.map((a) => [a.shiftId, a]));
     const shiftById = new Map(all.map((s) => [s.id, s]));
@@ -251,21 +262,22 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     // for rest rules and fairness); unfilled ones there are left alone.
     const fixed = current.filter((a) => shiftById.has(a.shiftId) && !scopedIds.has(a.shiftId));
     const lockedInScope = current.filter((a) => a.locked && scopedIds.has(a.shiftId));
-    const routine = routineFor(
-      scoped.filter((s) => !byShift.get(s.id)?.locked),
-      p.id,
-      inPool,
-    );
+    const open = scoped.filter((s) => !byShift.get(s.id)?.locked);
+    // Week-long teams first: whole weeks to one surgeon where possible.
+    const weeks = planWeeks({ shifts: open, surgeons: pool, requests, rules: p.rules, services, seed });
+    const weekIds = new Set(weeks.map((a) => a.shiftId));
+    const routine = routineFor(open.filter((s) => !weekIds.has(s.id)), p.id, inPool);
     const fixedIds = new Set(fixed.map((a) => a.shiftId));
     const result = optimizeSchedule({
       shifts: all.filter((s) => inScope(s) || fixedIds.has(s.id)),
       surgeons: pool,
-      requests: listRequests(db, { periodId: p.id }),
+      requests,
       rules: p.rules,
-      locked: [...fixed.map((a) => ({ ...a, locked: true })), ...lockedInScope, ...routine],
-      seed: body.seed ?? Math.floor(Math.random() * 1e9),
+      locked: [...fixed.map((a) => ({ ...a, locked: true })), ...lockedInScope, ...weeks, ...routine],
+      seed,
     });
-    const routineIds = new Set(routine.map((a) => a.shiftId));
+    // Week and routine picks are stored unlocked, so they're re-planned next time.
+    const routineIds = new Set([...routine, ...weeks].map((a) => a.shiftId));
     transaction(db, () => {
       const del = db.prepare('DELETE FROM assignments WHERE shift_id = ? AND locked = 0');
       for (const id of scopedIds) del.run(id);
@@ -278,6 +290,12 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
       ...report(p),
       unassignedShiftIds: result.unassignedShiftIds.filter((id) => scopedIds.has(id)),
       routineCount: routine.length,
+      weekCount: new Set(
+        weeks.map((a) => {
+          const s = shiftById.get(a.shiftId)!;
+          return `${s.serviceId}|${weekStart(s.date)}`;
+        }),
+      ).size,
       cost: result.cost,
     };
   });
