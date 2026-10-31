@@ -59,8 +59,13 @@ export interface Assignment {
 }
 
 export interface Rules {
-  /** Minimum hours off between two shifts for the same surgeon. */
+  /** Minimum hours off between two shifts for the same surgeon (never broken). */
   minRestHours: number;
+  /**
+   * Rest the optimizer aims for (soft). Only matters when set above
+   * minRestHours: shorter rest is then allowed, but only where needed.
+   */
+  preferredRestHours: number;
   /** Max weekday night shifts per Mon–Sun week. */
   maxNightsPerWeek: number;
   /** Weekends off required between weekend blocks (1 = no back-to-back weekends). */
@@ -74,6 +79,8 @@ export interface Rules {
     pendingUnavailable: number;
     spacing: number;
     holiday: number;
+    /** Cost of each pair of shifts with less than preferredRestHours between them. */
+    shortRest: number;
   };
   /** Relative burden of each kind when balancing workload. */
   kindWeights: Record<ShiftKind, number>;
@@ -81,6 +88,7 @@ export interface Rules {
 
 export const DEFAULT_RULES: Rules = {
   minRestHours: 12,
+  preferredRestHours: 12,
   maxNightsPerWeek: 2,
   minWeekendsOffBetween: 1,
   preferredSpacingDays: 3,
@@ -91,6 +99,7 @@ export const DEFAULT_RULES: Rules = {
     pendingUnavailable: 300,
     spacing: 4,
     holiday: 10,
+    shortRest: 250,
   },
   kindWeights: { day: 1, night: 1.5, weekend: 3 },
 };

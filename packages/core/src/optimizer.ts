@@ -236,10 +236,13 @@ class Model {
     cost += r.weights.holiday * (holidays - this.holidayTargets.get(userId)!) ** 2;
 
     for (let i = 1; i < list.length; i++) {
-      const days = (this.info[list[i]].startMin - this.info[list[i - 1]].startMin) / 1440;
+      const prev = this.info[list[i - 1]];
+      const cur = this.info[list[i]];
+      const days = (cur.startMin - prev.startMin) / 1440;
       if (days < r.preferredSpacingDays) {
         cost += r.weights.spacing * (r.preferredSpacingDays - days);
       }
+      if ((cur.startMin - prev.endMin) / 60 < r.preferredRestHours) cost += r.weights.shortRest;
     }
     return { soft: cost, hard: this.hardViolations(list).length };
   }

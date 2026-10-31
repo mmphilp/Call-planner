@@ -26,6 +26,7 @@ import {
 const rulesBody = z
   .object({
     minRestHours: z.number().min(0).max(48),
+    preferredRestHours: z.number().min(0).max(48),
     maxNightsPerWeek: z.number().int().min(0).max(7),
     minWeekendsOffBetween: z.number().int().min(0).max(8),
     preferredSpacingDays: z.number().min(0).max(14),

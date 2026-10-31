@@ -191,3 +191,28 @@ describe('realistic half year', () => {
     }
   }, 30_000);
 });
+
+describe('preferred rest', () => {
+  it('only shortens rest where a shift could not otherwise be covered', () => {
+    // Two surgeons, one week: covering every shift forces some back-to-back
+    // work, but far fewer pairs than ignoring rest entirely.
+    const shifts = generateShifts({ start: '2027-01-04', end: '2027-01-10', services: [general] });
+    const team = surgeons(2);
+    const countShort = (rules: object) => {
+      const r = optimizeSchedule({ shifts, surgeons: team, requests: [], rules: { maxNightsPerWeek: 4, ...rules }, seed: 1 });
+      const start = new Map(shifts.map((s) => [s.id, s]));
+      let short = 0;
+      for (const u of team) {
+        const mine = r.assignments.filter((a) => a.userId === u.id).map((a) => start.get(a.shiftId)!).sort((a, b) => a.start.localeCompare(b.start));
+        for (let i = 1; i < mine.length; i++) if (mine[i].start === mine[i - 1].end) short++;
+      }
+      return { unfilled: r.unassignedShiftIds.length, short };
+    };
+    const strict = countShort({});
+    const soft = countShort({ minRestHours: 0, preferredRestHours: 12 });
+    const ignored = countShort({ minRestHours: 0, preferredRestHours: 0 });
+    expect(strict.unfilled).toBeGreaterThan(0);
+    expect(soft.unfilled).toBe(0);
+    expect(soft.short).toBeLessThanOrEqual(ignored.short);
+  });
+});

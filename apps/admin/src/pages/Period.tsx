@@ -243,6 +243,7 @@ function RulesTab({ period, reload }: { period: Period; reload: () => void }) {
           <p className="muted small">The optimizer never breaks these. It leaves a shift open if no one fits.</p>
           <div className="form-grid">
             {num('Minimum rest between shifts (hours)', '12 = no day shift right after a night', rules.minRestHours, (v) => setRules({ ...rules, minRestHours: v }))}
+            {num('Preferred rest (hours)', 'Set minimum lower to allow back-to-back shifts only when needed', rules.preferredRestHours, (v) => setRules({ ...rules, preferredRestHours: v }))}
             {num('Max weekday nights per week', 'Mon–Thu night shifts', rules.maxNightsPerWeek, (v) => setRules({ ...rules, maxNightsPerWeek: v }))}
             {num('Weekends off between weekend blocks', '1 = never back-to-back weekends', rules.minWeekendsOffBetween, (v) => setRules({ ...rules, minWeekendsOffBetween: v }))}
             {num('Preferred days between shifts', 'Shifts closer than this are discouraged', rules.preferredSpacingDays, (v) => setRules({ ...rules, preferredSpacingDays: v }))}
@@ -258,6 +259,7 @@ function RulesTab({ period, reload }: { period: Period; reload: () => void }) {
             {num('"Prefer on" requests', '', rules.weights.preferOn, (v) => setRules({ ...rules, weights: { ...rules.weights, preferOn: v } }))}
             {num('Unapproved time off', 'Pending "unavailable" requests', rules.weights.pendingUnavailable, (v) => setRules({ ...rules, weights: { ...rules.weights, pendingUnavailable: v } }))}
             {num('Spacing', 'Avoid clustered shifts', rules.weights.spacing, (v) => setRules({ ...rules, weights: { ...rules.weights, spacing: v } }))}
+            {num('Rest', 'Avoid back-to-back shifts', rules.weights.shortRest, (v) => setRules({ ...rules, weights: { ...rules.weights, shortRest: v } }))}
           </div>
           <h2 style={{ marginTop: 16 }}>How strictly to balance each shift type</h2>
           <div className="form-grid">
