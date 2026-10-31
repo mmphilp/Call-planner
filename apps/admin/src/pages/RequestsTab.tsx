@@ -1,6 +1,7 @@
 import type { ShiftKind } from '@call-planner/core';
 import { useState } from 'react';
 import { del, patch, post, type RequestRow } from '../api';
+import { useMe } from '../me';
 import type { PeriodData } from './Period';
 
 export const TYPE_LABEL: Record<RequestRow['type'], string> = {
@@ -13,6 +14,7 @@ const KIND_LABEL: Record<ShiftKind, string> = { day: 'Days', night: 'Nights', we
 
 export function RequestsTab({ data, reload }: { data: PeriodData; reload: () => void }) {
   const p = data.schedule.period;
+  const { isSuper } = useMe();
   const [filter, setFilter] = useState<'all' | RequestRow['status']>('pending');
   const [error, setError] = useState<string | null>(null);
   const outcomes = new Map(data.report.requestOutcomes.map((o) => [o.requestId, o]));
@@ -74,11 +76,11 @@ export function RequestsTab({ data, reload }: { data: PeriodData; reload: () => 
                     ) : <span className="muted">—</span>}
                   </td>
                   <td>
-                    <div className="row" style={{ flexWrap: 'nowrap' }}>
+                    {isSuper && <div className="row" style={{ flexWrap: 'nowrap' }}>
                       {r.status !== 'approved' && <button onClick={decide(r, 'approved')}>Approve</button>}
                       {r.status !== 'denied' && <button onClick={decide(r, 'denied')}>Deny</button>}
                       <button className="link danger" onClick={() => confirm('Delete this request?') && act(() => del(`/api/requests/${r.id}`))()}>Delete</button>
-                    </div>
+                    </div>}
                   </td>
                 </tr>
               );
@@ -91,7 +93,7 @@ export function RequestsTab({ data, reload }: { data: PeriodData; reload: () => 
           </tbody>
         </table>
       </div>
-      <AddRequest data={data} onAdded={reload} periodStart={p.startDate} periodEnd={p.endDate} periodId={p.id} />
+      {isSuper && <AddRequest data={data} onAdded={reload} periodStart={p.startDate} periodEnd={p.endDate} periodId={p.id} />}
     </>
   );
 }

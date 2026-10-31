@@ -1,27 +1,34 @@
 import { randomUUID } from 'node:crypto';
 import {
+  dayOfWeek,
   DEFAULT_RULES,
   evaluateSchedule,
   generateShifts,
   halfYearRange,
   optimizeSchedule,
+  requestCovers,
+  type Assignment,
   type Half,
+  type Shift,
+  type ShiftKind,
 } from '@call-planner/core';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { transaction, type Db } from '../db';
-import { dateStr, httpError, me, parse, requireAdmin } from '../http';
+import { canEditShift, dateStr, httpError, isScheduler, me, parse, requireAdmin, requireScheduler } from '../http';
 import {
   callPool,
   getPeriod,
   listAssignments,
   listPeriods,
   listRequests,
+  listRoutine,
   listServices,
   listShifts,
   poolShifts,
   listUsers,
   type Period,
+  type User,
 } from '../repo';
 
 const rulesBody = z
@@ -47,12 +54,14 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
   /** Load a period the current user is allowed to see. */
   const visiblePeriod = (req: FastifyRequest, id: string): Period => {
     const p = getPeriod(db, id);
-    if (!p || (p.status === 'draft' && me(req).role !== 'admin')) throw httpError(404, 'Schedule period not found');
+    if (!p || (p.status === 'draft' && !isScheduler(me(req)))) throw httpError(404, 'Schedule period not found');
     return p;
   };
 
-  const editablePeriod = (req: FastifyRequest, id: string): Period => {
-    requireAdmin(req);
+  /** An unpublished period; by default only the overall admin may change it. */
+  const editablePeriod = (req: FastifyRequest, id: string, opts: { teamAdmins?: boolean } = {}): Period => {
+    if (opts.teamAdmins) requireScheduler(req);
+    else requireAdmin(req);
     const p = visiblePeriod(req, id);
     if (p.status === 'published') throw httpError(409, 'Unpublish the schedule before changing it');
     return p;
@@ -84,7 +93,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
 
   app.get('/api/periods', async (req) => {
     const all = listPeriods(db);
-    return me(req).role === 'admin' ? all : all.filter((p) => p.status !== 'draft');
+    return isScheduler(me(req)) ? all : all.filter((p) => p.status !== 'draft');
   });
 
   app.post('/api/periods', async (req, reply) => {
@@ -159,7 +168,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
 
   app.get<{ Params: { id: string } }>('/api/periods/:id/schedule', async (req) => {
     const p = visiblePeriod(req, req.params.id);
-    const isAdmin = me(req).role === 'admin';
+    const isAdmin = isScheduler(me(req));
     const people = listUsers(db).map((u) => ({ id: u.id, name: u.name, phone: u.phone }));
     return {
       period: p,
@@ -180,39 +189,114 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     });
 
   app.get<{ Params: { id: string } }>('/api/periods/:id/report', async (req) => {
-    requireAdmin(req);
+    requireScheduler(req);
     return report(visiblePeriod(req, req.params.id));
   });
 
+  const scopeBody = z.object({
+    serviceIds: z.array(z.string()).optional(),
+    kinds: z.array(z.enum(['day', 'night', 'weekend'])).optional(),
+  });
+
+  /**
+   * Which shifts a request may touch. The overall admin can pick any
+   * services/kinds (default: everything); a team admin only gets weekday
+   * shifts of their own services.
+   */
+  const scopeFor = (user: User, body: z.infer<typeof scopeBody>) => {
+    let serviceIds = body.serviceIds ?? (user.role === 'admin' ? listServices(db).map((s) => s.id) : user.adminServiceIds);
+    let kinds: ShiftKind[] = body.kinds ?? ['day', 'night', 'weekend'];
+    if (user.role !== 'admin') {
+      if (serviceIds.some((id) => !user.adminServiceIds.includes(id))) {
+        throw httpError(403, 'You can only schedule your own team');
+      }
+      kinds = kinds.filter((k) => k !== 'weekend');
+    }
+    const services = new Set(serviceIds);
+    const kindSet = new Set(kinds);
+    return (s: { serviceId: string; kind: ShiftKind }) => services.has(s.serviceId) && kindSet.has(s.kind);
+  };
+
+  /** Routine weekday assignments that apply to these shifts (skipping holidays and time off). */
+  const routineFor = (shifts: Shift[], periodId: string, poolIds: Set<string>): Assignment[] => {
+    const routine = new Map(listRoutine(db).map((r) => [`${r.serviceId}|${r.kind}|${r.weekday}`, r.userId]));
+    if (!routine.size) return [];
+    const eligible = new Map(callPool(db).map((u) => [u.id, new Set(u.serviceIds)]));
+    const away = listRequests(db, { periodId }).filter((r) => r.type === 'unavailable' && r.status !== 'denied');
+    const out: Assignment[] = [];
+    for (const s of shifts) {
+      if (s.kind === 'weekend' || s.holiday) continue;
+      const userId = routine.get(`${s.serviceId}|${s.kind}|${dayOfWeek(s.date)}`);
+      if (!userId || !poolIds.has(userId) || !eligible.get(userId)?.has(s.serviceId)) continue;
+      if (away.some((r) => r.userId === userId && requestCovers(r, s))) continue;
+      out.push({ shiftId: s.id, userId, locked: true });
+    }
+    return out;
+  };
+
   app.post<{ Params: { id: string } }>('/api/periods/:id/optimize', async (req) => {
-    const p = editablePeriod(req, req.params.id);
-    const body = parse(z.object({ seed: z.number().int().optional() }), req.body);
+    const p = editablePeriod(req, req.params.id, { teamAdmins: true });
+    const body = parse(scopeBody.extend({ seed: z.number().int().optional() }), req.body);
+    const inScope = scopeFor(me(req), body);
     const pool = callPool(db);
     const inPool = new Set(pool.map((u) => u.id));
-    const locked = listAssignments(db, p.id).filter((a) => a.locked && inPool.has(a.userId));
+
+    const all = poolShifts(db, p.id);
+    const current = listAssignments(db, p.id).filter((a) => inPool.has(a.userId));
+    const byShift = new Map(current.map((a) => [a.shiftId, a]));
+    const shiftById = new Map(all.map((s) => [s.id, s]));
+    const scoped = all.filter(inScope);
+    const scopedIds = new Set(scoped.map((s) => s.id));
+    // Shifts outside the scope keep their current assignee (and still count
+    // for rest rules and fairness); unfilled ones there are left alone.
+    const fixed = current.filter((a) => shiftById.has(a.shiftId) && !scopedIds.has(a.shiftId));
+    const lockedInScope = current.filter((a) => a.locked && scopedIds.has(a.shiftId));
+    const routine = routineFor(
+      scoped.filter((s) => !byShift.get(s.id)?.locked),
+      p.id,
+      inPool,
+    );
+    const fixedIds = new Set(fixed.map((a) => a.shiftId));
     const result = optimizeSchedule({
-      shifts: poolShifts(db, p.id),
+      shifts: all.filter((s) => inScope(s) || fixedIds.has(s.id)),
       surgeons: pool,
       requests: listRequests(db, { periodId: p.id }),
       rules: p.rules,
-      locked,
+      locked: [...fixed.map((a) => ({ ...a, locked: true })), ...lockedInScope, ...routine],
       seed: body.seed ?? Math.floor(Math.random() * 1e9),
     });
+    const routineIds = new Set(routine.map((a) => a.shiftId));
     transaction(db, () => {
-      db.prepare(
-        'DELETE FROM assignments WHERE locked = 0 AND shift_id IN (SELECT id FROM shifts WHERE period_id = ?)',
-      ).run(p.id);
+      const del = db.prepare('DELETE FROM assignments WHERE shift_id = ? AND locked = 0');
+      for (const id of scopedIds) del.run(id);
       const ins = db.prepare('INSERT OR IGNORE INTO assignments (shift_id, user_id, locked) VALUES (?, ?, 0)');
-      for (const a of result.assignments) if (!a.locked) ins.run(a.shiftId, a.userId);
+      for (const a of result.assignments) {
+        if (scopedIds.has(a.shiftId) && (!a.locked || routineIds.has(a.shiftId))) ins.run(a.shiftId, a.userId);
+      }
     });
-    return { ...report(p), unassignedShiftIds: result.unassignedShiftIds, cost: result.cost };
+    return {
+      ...report(p),
+      unassignedShiftIds: result.unassignedShiftIds.filter((id) => scopedIds.has(id)),
+      routineCount: routine.length,
+      cost: result.cost,
+    };
   });
 
-  app.put<{ Params: { id: string; shiftId: string } }>('/api/periods/:id/assignments/:shiftId', async (req) => {
-    const p = editablePeriod(req, req.params.id);
-    const body = parse(z.object({ userId: z.string().nullable(), locked: z.boolean().optional() }), req.body);
-    const shift = db.prepare('SELECT id FROM shifts WHERE id = ? AND period_id = ?').get(req.params.shiftId, p.id);
+  /** Look up a shift in this period that the current user may edit. */
+  const editableShift = (req: FastifyRequest, periodId: string, shiftId: string) => {
+    const shift = db.prepare('SELECT service_id, kind FROM shifts WHERE id = ? AND period_id = ?').get(shiftId, periodId) as
+      | { service_id: string; kind: string }
+      | undefined;
     if (!shift) throw httpError(404, 'Shift not found');
+    if (!canEditShift(me(req), { serviceId: shift.service_id, kind: shift.kind })) {
+      throw httpError(403, 'Only the overall admin can change this shift');
+    }
+  };
+
+  app.put<{ Params: { id: string; shiftId: string } }>('/api/periods/:id/assignments/:shiftId', async (req) => {
+    const p = editablePeriod(req, req.params.id, { teamAdmins: true });
+    const body = parse(z.object({ userId: z.string().nullable(), locked: z.boolean().optional() }), req.body);
+    editableShift(req, p.id, req.params.shiftId);
     if (body.userId === null) {
       db.prepare('DELETE FROM assignments WHERE shift_id = ?').run(req.params.shiftId);
     } else {
@@ -228,10 +312,9 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
 
   /** Mark a shift as covered from outside the call pool (e.g. a locum), or clear it. */
   app.put<{ Params: { id: string; shiftId: string } }>('/api/periods/:id/shifts/:shiftId/cover', async (req) => {
-    const p = editablePeriod(req, req.params.id);
+    const p = editablePeriod(req, req.params.id, { teamAdmins: true });
     const { coveredBy } = parse(z.object({ coveredBy: z.string().trim().min(1).max(100).nullable() }), req.body);
-    const shift = db.prepare('SELECT id FROM shifts WHERE id = ? AND period_id = ?').get(req.params.shiftId, p.id);
-    if (!shift) throw httpError(404, 'Shift not found');
+    editableShift(req, p.id, req.params.shiftId);
     transaction(db, () => {
       db.prepare('UPDATE shifts SET covered_by = ? WHERE id = ?').run(coveredBy, req.params.shiftId);
       if (coveredBy) db.prepare('DELETE FROM assignments WHERE shift_id = ?').run(req.params.shiftId);
@@ -240,17 +323,18 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
   });
 
   app.post<{ Params: { id: string } }>('/api/periods/:id/assignments/clear', async (req) => {
-    const p = editablePeriod(req, req.params.id);
-    const { includeLocked } = parse(z.object({ includeLocked: z.boolean().default(false) }), req.body);
-    db.prepare(
-      `DELETE FROM assignments WHERE shift_id IN (SELECT id FROM shifts WHERE period_id = ?)
-       ${includeLocked ? '' : 'AND locked = 0'}`,
-    ).run(p.id);
+    const p = editablePeriod(req, req.params.id, { teamAdmins: true });
+    const body = parse(scopeBody.extend({ includeLocked: z.boolean().default(false) }), req.body);
+    const inScope = scopeFor(me(req), body);
+    const del = db.prepare(`DELETE FROM assignments WHERE shift_id = ? ${body.includeLocked ? '' : 'AND locked = 0'}`);
+    transaction(db, () => {
+      for (const s of listShifts(db, p.id)) if (inScope(s)) del.run(s.id);
+    });
     return { ok: true };
   });
 
   app.get<{ Params: { id: string } }>('/api/periods/:id/export.csv', async (req, reply) => {
-    requireAdmin(req);
+    requireScheduler(req);
     const p = visiblePeriod(req, req.params.id);
     const services = new Map(listServices(db).map((s) => [s.id, s.name]));
     const names = new Map(listUsers(db).map((u) => [u.id, u.name]));

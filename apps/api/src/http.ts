@@ -37,3 +37,22 @@ export function requireAdmin(req: FastifyRequest): User {
   if (req.currentUser.role !== 'admin') throw httpError(403, 'Admin access required');
   return req.currentUser;
 }
+
+/** Overall admin, or a team admin for at least one service. */
+export function isScheduler(user: User): boolean {
+  return user.role === 'admin' || user.adminServiceIds.length > 0;
+}
+
+export function requireScheduler(req: FastifyRequest): User {
+  if (!isScheduler(req.currentUser)) throw httpError(403, 'Admin access required');
+  return req.currentUser;
+}
+
+/** Team admins manage weekday call for their own services; weekends stay with the overall admin. */
+export function canEditShift(user: User, shift: { serviceId: string; kind: string }): boolean {
+  return user.role === 'admin' || (shift.kind !== 'weekend' && user.adminServiceIds.includes(shift.serviceId));
+}
+
+export function canEditService(user: User, serviceId: string): boolean {
+  return user.role === 'admin' || user.adminServiceIds.includes(serviceId);
+}

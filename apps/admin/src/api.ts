@@ -22,6 +22,8 @@ export interface User {
   takesCall: boolean;
   phone: string | null;
   serviceIds: string[];
+  /** Services whose weekday call this user manages (team admin). */
+  adminServiceIds: string[];
 }
 
 export interface Period {

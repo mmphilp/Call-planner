@@ -1,6 +1,7 @@
 import { dayOfWeek, eachDay, weekStart, type Shift } from '@call-planner/core';
 import { useMemo, useState } from 'react';
 import { post, put, type RequestRow } from '../api';
+import { useMe } from '../me';
 import type { PeriodData } from './Period';
 
 const LOCUM = '__locum__';
@@ -12,6 +13,7 @@ const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 interface OptimizeSummary {
   unassignedShiftIds: string[];
+  routineCount: number;
   violations: unknown[];
   requestOutcomes: { honored: boolean }[];
 }
@@ -22,16 +24,40 @@ function touches(r: RequestRow, s: Shift) {
   return r.startDate <= s.end.slice(0, 10) && r.endDate >= s.date;
 }
 
+interface Scope {
+  key: string;
+  label: string;
+  serviceIds?: string[];
+  kinds?: Shift['kind'][];
+}
+
 export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => void }) {
   const { schedule, requests, report, users } = data;
   const p = schedule.period;
+  const { me, isSuper, canEditShift } = useMe();
   const editable = p.status !== 'published';
   const [month, setMonth] = useState(Number(p.startDate.slice(5, 7)) - 1);
   const [highlight, setHighlight] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<OptimizeSummary | null>(null);
-  const poolCount = schedule.shifts.filter((s) => !s.coveredBy).length;
+  // What "optimize" and "clear" act on: the overall admin can pick any part;
+  // team admins only their own teams' weekdays.
+  const weekdayServices = schedule.services.filter(
+    (s) => (s.coversWeekdayDay || s.coversWeekdayNight) && (isSuper || me.adminServiceIds.includes(s.id)),
+  );
+  const scopes: Scope[] = [
+    ...(isSuper ? [{ key: 'all', label: 'Everything' }] : weekdayServices.length > 1 ? [{ key: 'all', label: 'All my teams’ weekdays' }] : []),
+    ...(isSuper && schedule.shifts.some((s) => s.kind === 'weekend') ? [{ key: 'weekends', label: 'Weekends only', kinds: ['weekend' as const] }] : []),
+    ...weekdayServices.map((s) => ({ key: s.id, label: `${s.name} weekdays`, serviceIds: [s.id], kinds: ['day' as const, 'night' as const] })),
+  ];
+  const [scopeKey, setScopeKey] = useState(scopes[0]?.key ?? 'all');
+  const scope = scopes.find((x) => x.key === scopeKey) ?? scopes[0];
+  const inScope = (s: ScheduledShift) =>
+    canEditShift(s) && (!scope?.serviceIds || scope.serviceIds.includes(s.serviceId)) && (!scope?.kinds || scope.kinds.includes(s.kind));
+  const scopeBody = { serviceIds: scope?.serviceIds, kinds: scope?.kinds };
+  const poolCount = schedule.shifts.filter((s) => !s.coveredBy && inScope(s)).length;
+  const locumCount = schedule.shifts.filter((s) => s.coveredBy && inScope(s)).length;
   const hasWeekday = schedule.shifts.some((s) => s.kind !== 'weekend');
   const hasWeekend = schedule.shifts.some((s) => s.kind === 'weekend');
   const [view, setView] = useState<'weekdays' | 'weekends'>(hasWeekday ? 'weekdays' : 'weekends');
@@ -52,16 +78,23 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
   const months = [...new Set(eachDay(p.startDate, p.endDate).map((d) => Number(d.slice(5, 7)) - 1))];
   const monthPrefix = `${p.year}-${String(month + 1).padStart(2, '0')}`;
   const weekdays = eachDay(p.startDate, p.endDate).filter((d) => d.startsWith(monthPrefix) && dayOfWeek(d) % 6 !== 0);
-  const services = schedule.services.filter((s) => s.coversWeekdayDay || s.coversWeekdayNight);
+  // Team admins see just their own teams in the weekday grid.
+  const services = schedule.services.filter(
+    (s) => (s.coversWeekdayDay || s.coversWeekdayNight) && (isSuper || me.adminServiceIds.includes(s.id)),
+  );
 
   const optimize = async () => {
-    const lockedCount = schedule.assignments.filter((a) => a.locked).length;
-    if (schedule.assignments.length > lockedCount &&
-      !confirm(`Replace the current draft? ${lockedCount} locked assignment(s) will be kept.`)) return;
+    const scoped = schedule.assignments.filter((a) => {
+      const s = shiftById.get(a.shiftId);
+      return s && inScope(s);
+    });
+    const lockedCount = scoped.filter((a) => a.locked).length;
+    if (scoped.length > lockedCount &&
+      !confirm(`Re-optimize ${scope?.label.toLowerCase()}? ${lockedCount} locked assignment(s) will be kept; nothing outside this is changed.`)) return;
     setBusy(true);
     setError(null);
     try {
-      setSummary(await post<OptimizeSummary>(`/api/periods/${p.id}/optimize`, {}));
+      setSummary(await post<OptimizeSummary>(`/api/periods/${p.id}/optimize`, scopeBody));
       reload();
     } catch (e) {
       setError((e as Error).message);
@@ -96,7 +129,7 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
       return (
         <div className="cell locum" title="Covered from outside the call pool; the optimizer skips this shift">
           <span className="badge">{/locum/i.test(shift.coveredBy) ? shift.coveredBy : `Locum: ${shift.coveredBy}`}</span>
-          {editable && (
+          {editable && canEditShift(shift) && (
             <button className="link" title="Remove locum cover" onClick={() => setCover(shift.id, null)}>×</button>
           )}
         </div>
@@ -104,6 +137,7 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
     }
     const a = owner.get(shift.id);
     const issues = problems.get(shift.id);
+    const canEdit = editable && canEditShift(shift);
     const eligible = pool.filter((u) => u.serviceIds.includes(shift.serviceId));
     const flag = (uid: string) => {
       const rs = requests.filter((r) => r.userId === uid && r.status !== 'denied' && touches(r, shift));
@@ -117,7 +151,7 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
       <div className={classes} title={issues?.join('\n') ?? (shift.kind === 'weekend' ? `${shift.start} → ${shift.end}` : undefined)}>
         <select
           value={a?.userId ?? ''}
-          disabled={!editable}
+          disabled={!canEdit}
           style={highlight && a?.userId === highlight ? { fontWeight: 700, outline: '2px solid var(--accent)' } : undefined}
           onChange={(e) => {
             if (e.target.value !== LOCUM) return assign(shift.id, e.target.value || null);
@@ -134,7 +168,7 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
         {a && (
           <button
             className={`lock ${a.locked ? 'on' : ''}`}
-            disabled={!editable}
+            disabled={!canEdit}
             title={a.locked ? 'Locked: the optimizer keeps this. Click to unlock.' : 'Lock so the optimizer keeps this'}
             onClick={() => assign(shift.id, a.userId, !a.locked)}
           >
@@ -150,11 +184,21 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
       {error && <div className="alert error">{error}</div>}
       <div className="card">
         <div className="row">
-          <button className="primary" disabled={!editable || busy} onClick={optimize}>
-            {busy ? 'Optimizing…' : schedule.assignments.length ? 'Re-optimize' : 'Generate optimized schedule'}
+          {scopes.length > 1 && (
+            <select value={scopeKey} onChange={(e) => setScopeKey(e.target.value)} aria-label="What to optimize">
+              {scopes.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
+            </select>
+          )}
+          <button className="primary" disabled={!editable || busy || !scope} onClick={optimize}>
+            {busy ? 'Optimizing…' : `Optimize ${scopes.length === 1 && scope ? scope.label.toLowerCase() : ''}`.trim()}
           </button>
-          {editable && schedule.assignments.length > 0 && (
-            <button onClick={() => confirm('Clear all unlocked assignments?') && post(`/api/periods/${p.id}/assignments/clear`).then(reload)}>
+          {editable && schedule.assignments.length > 0 && scope && (
+            <button
+              onClick={() =>
+                confirm(`Clear unlocked assignments for ${scope.label.toLowerCase()}?`) &&
+                post(`/api/periods/${p.id}/assignments/clear`, scopeBody).then(reload)
+              }
+            >
               Clear unlocked
             </button>
           )}
@@ -171,8 +215,9 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
         {summary && (
           <div className={`alert ${summary.unassignedShiftIds.length || summary.violations.length > summary.unassignedShiftIds.length ? 'error' : 'ok'}`} style={{ marginTop: 12, marginBottom: 0 }}>
             Optimized: {poolCount - summary.unassignedShiftIds.length} of {poolCount} shifts filled
-            {poolCount < schedule.shifts.length && ` (plus ${schedule.shifts.length - poolCount} covered by locums)`},{' '}
-            {summary.requestOutcomes.filter((o) => o.honored).length} of {summary.requestOutcomes.length} requests honored.
+            {locumCount > 0 && ` (plus ${locumCount} covered by locums)`},{' '}
+            {summary.requestOutcomes.filter((o) => o.honored).length} of {summary.requestOutcomes.length} requests honored
+            {summary.routineCount > 0 && `, ${summary.routineCount} routine days applied`}.
             {summary.unassignedShiftIds.length > 0 && ' Some shifts could not be filled without breaking a rule. Fill them by hand or relax a rule.'}
           </div>
         )}

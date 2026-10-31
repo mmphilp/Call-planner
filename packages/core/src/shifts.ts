@@ -31,8 +31,11 @@ export function generateShifts(opts: GenerateOptions): Shift[] {
   const extend = opts.extendWeekendsForHolidays ?? true;
   const shifts: Shift[] = [];
 
-  // Weekday dates absorbed into a weekend block, per service.
+  // Weekend blocks cover the whole group: when any service has them, no
+  // service gets weekday shifts inside a block (Friday night, or the
+  // Thursday night / Friday / Monday a holiday folds into the weekend).
   const absorbed = new Set<string>();
+  const hasWeekendBlocks = opts.services.some((s) => s.coversWeekend);
 
   for (const service of opts.services) {
     if (!service.coversWeekend) continue;
@@ -44,11 +47,11 @@ export function generateShifts(opts: GenerateOptions): Shift[] {
         if (holidays.has(date)) startDate = addDays(date, -1);
         if (holidays.has(endDate)) endDate = addDays(endDate, 1);
       }
-      for (let d = startDate; d < date; d = addDays(d, 1)) absorbed.add(`${service.id}|${d}|night`);
-      if (startDate < date) absorbed.add(`${service.id}|${date}|day`);
+      for (let d = startDate; d < date; d = addDays(d, 1)) absorbed.add(`${d}|night`);
+      if (startDate < date) absorbed.add(`${date}|day`);
       for (let d = addDays(date, 3); d < endDate; d = addDays(d, 1)) {
-        absorbed.add(`${service.id}|${d}|day`);
-        absorbed.add(`${service.id}|${d}|night`);
+        absorbed.add(`${d}|day`);
+        absorbed.add(`${d}|night`);
       }
       const touchesHoliday = eachDay(startDate, endDate).some((d) => holidays.has(d));
       shifts.push({
@@ -68,7 +71,7 @@ export function generateShifts(opts: GenerateOptions): Shift[] {
     if (dow === 0 || dow === 6) continue;
     for (const service of opts.services) {
       const isHoliday = holidays.has(date) || undefined;
-      if (service.coversWeekdayDay && !absorbed.has(`${service.id}|${date}|day`)) {
+      if (service.coversWeekdayDay && !absorbed.has(`${date}|day`)) {
         shifts.push({
           id: shiftId(service.id, 'day', date),
           serviceId: service.id,
@@ -79,13 +82,9 @@ export function generateShifts(opts: GenerateOptions): Shift[] {
           holiday: isHoliday,
         });
       }
-      // Friday night is part of the weekend block for services that have one.
-      const fridayCoveredByWeekend = dow === 5 && service.coversWeekend;
-      if (
-        service.coversWeekdayNight &&
-        !fridayCoveredByWeekend &&
-        !absorbed.has(`${service.id}|${date}|night`)
-      ) {
+      // Friday night is part of the weekend block.
+      const fridayCoveredByWeekend = dow === 5 && hasWeekendBlocks;
+      if (service.coversWeekdayNight && !fridayCoveredByWeekend && !absorbed.has(`${date}|night`)) {
         shifts.push({
           id: shiftId(service.id, 'night', date),
           serviceId: service.id,

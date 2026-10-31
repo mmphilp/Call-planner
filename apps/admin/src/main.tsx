@@ -6,6 +6,8 @@ import { Login } from './pages/Login';
 import { PeoplePage } from './pages/People';
 import { PeriodPage } from './pages/Period';
 import { PeriodsPage } from './pages/Periods';
+import { RoutinePage } from './pages/Routine';
+import { MeContext } from './me';
 import { ServicesPage } from './pages/Services';
 import './styles.css';
 
@@ -24,7 +26,8 @@ function App() {
 
   if (checking) return null;
   if (!user) return <Login onSignedIn={setUser} />;
-  if (user.role !== 'admin') {
+  const isSuper = user.role === 'admin';
+  if (!isSuper && !user.adminServiceIds.length) {
     return (
       <div className="login">
         <div className="card">
@@ -37,15 +40,20 @@ function App() {
   }
 
   return (
+    <MeContext.Provider value={user}>
     <BrowserRouter>
       <div className="shell">
         <nav className="sidebar">
           <div className="brand">Call Planner</div>
           <NavLink to="/periods">Schedules</NavLink>
-          <NavLink to="/people">Surgeons</NavLink>
-          <NavLink to="/services">Services</NavLink>
+          <NavLink to="/routine">Weekday call</NavLink>
+          {isSuper && <NavLink to="/people">Surgeons</NavLink>}
+          {isSuper && <NavLink to="/services">Services</NavLink>}
           <div className="spacer" />
-          <span className="muted small" style={{ padding: '0 10px' }}>{user.name}</span>
+          <span className="muted small" style={{ padding: '0 10px' }}>
+            {user.name}
+            {!isSuper && <><br />Team admin</>}
+          </span>
           <button className="link" style={{ textAlign: 'left' }} onClick={() => (auth.set(null), setUser(null))}>
             Sign out
           </button>
@@ -54,13 +62,15 @@ function App() {
           <Routes>
             <Route path="/periods" element={<PeriodsPage />} />
             <Route path="/periods/:id" element={<PeriodPage />} />
-            <Route path="/people" element={<PeoplePage currentUserId={user.id} />} />
-            <Route path="/services" element={<ServicesPage />} />
+            <Route path="/routine" element={<RoutinePage />} />
+            {isSuper && <Route path="/people" element={<PeoplePage currentUserId={user.id} />} />}
+            {isSuper && <Route path="/services" element={<ServicesPage />} />}
             <Route path="*" element={<Navigate to="/periods" replace />} />
           </Routes>
         </main>
       </div>
     </BrowserRouter>
+    </MeContext.Provider>
   );
 }
 

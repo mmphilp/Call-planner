@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { get, post, type Period } from '../api';
+import { useMe } from '../me';
 import { useLoad } from '../useLoad';
 
 export const STATUS_LABEL: Record<Period['status'], string> = {
@@ -25,6 +26,7 @@ export function PeriodsPage() {
   const [creating, setCreating] = useState<{ year: number; half: 1 | 2 } | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { isSuper } = useMe();
 
   const create = async () => {
     if (!creating) return;
@@ -44,7 +46,7 @@ export function PeriodsPage() {
           <h1>Schedules</h1>
           <div className="muted">Each schedule covers half a year: January–June or July–December.</div>
         </div>
-        {periods && !creating && <button className="primary" onClick={() => setCreating(nextHalf(periods))}>New half-year</button>}
+        {isSuper && periods && !creating && <button className="primary" onClick={() => setCreating(nextHalf(periods))}>New half-year</button>}
       </div>
       {error && <div className="alert error">{error}</div>}
       {creating && (

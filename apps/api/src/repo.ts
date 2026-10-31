@@ -26,6 +26,8 @@ export interface User {
   takesCall: boolean;
   phone: string | null;
   serviceIds: string[];
+  /** Services whose weekday call this user manages (team admin). */
+  adminServiceIds: string[];
 }
 
 export interface Period {
@@ -55,6 +57,10 @@ function toUser(db: Db, r: Row): User {
     .prepare('SELECT service_id FROM user_services WHERE user_id = ?')
     .all(r.id)
     .map((s: Row) => s.service_id as string);
+  const adminServiceIds = db
+    .prepare('SELECT service_id FROM service_admins WHERE user_id = ?')
+    .all(r.id)
+    .map((s: Row) => s.service_id as string);
   return {
     id: r.id,
     email: r.email,
@@ -65,6 +71,7 @@ function toUser(db: Db, r: Row): User {
     takesCall: !!r.takes_call,
     phone: r.phone ?? null,
     serviceIds,
+    adminServiceIds,
   };
 }
 
@@ -85,6 +92,29 @@ export function setUserServices(db: Db, userId: string, serviceIds: string[]) {
   db.prepare('DELETE FROM user_services WHERE user_id = ?').run(userId);
   const ins = db.prepare('INSERT INTO user_services (user_id, service_id) VALUES (?, ?)');
   for (const s of new Set(serviceIds)) ins.run(userId, s);
+}
+
+export function setUserAdminServices(db: Db, userId: string, serviceIds: string[]) {
+  db.prepare('DELETE FROM service_admins WHERE user_id = ?').run(userId);
+  const ins = db.prepare('INSERT INTO service_admins (user_id, service_id) VALUES (?, ?)');
+  for (const s of new Set(serviceIds)) ins.run(userId, s);
+}
+
+export interface RoutineDay {
+  serviceId: string;
+  kind: 'day' | 'night';
+  /** 1 = Monday … 5 = Friday */
+  weekday: number;
+  userId: string;
+}
+
+export function listRoutine(db: Db): RoutineDay[] {
+  return (db.prepare('SELECT * FROM routine_days ORDER BY service_id, kind, weekday').all() as Row[]).map((r) => ({
+    serviceId: r.service_id,
+    kind: r.kind,
+    weekday: r.weekday,
+    userId: r.user_id,
+  }));
 }
 
 /** Surgeons who take part in the call pool, in the optimizer's shape. */

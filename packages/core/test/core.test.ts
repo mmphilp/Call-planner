@@ -64,6 +64,27 @@ describe('generateShifts', () => {
     expect(shifts.find((s) => s.id === 'gen:night:2027-01-18')).toBeUndefined();
   });
 
+  it('leaves Friday nights and holiday days to a shared weekend service', () => {
+    // A multi-specialty group: each specialty covers its own weekdays, and a
+    // shared service covers every weekend block.
+    const colorectal: Service = { id: 'crs', name: 'Colorectal', coversWeekdayDay: true, coversWeekdayNight: true, coversWeekend: false };
+    const shared: Service = { id: 'wk', name: 'Specialty Coverage', coversWeekdayDay: false, coversWeekdayNight: false, coversWeekend: true };
+    const shifts = generateShifts({
+      start: '2027-01-11',
+      end: '2027-01-24',
+      services: [colorectal, shared],
+      holidays: ['2027-01-18'],
+    });
+    const ids = new Set(shifts.map((s) => s.id));
+    expect(ids.has('crs:night:2027-01-14')).toBe(true);
+    expect(ids.has('crs:night:2027-01-15')).toBe(false); // Friday night → weekend block
+    expect(ids.has('crs:day:2027-01-15')).toBe(true);
+    expect(ids.has('crs:day:2027-01-18')).toBe(false); // MLK day → long weekend
+    expect(ids.has('crs:night:2027-01-18')).toBe(false);
+    expect(ids.has('crs:day:2027-01-19')).toBe(true);
+    expect(shifts.find((s) => s.id === 'wk:weekend:2027-01-15')!.end).toBe('2027-01-19T07:00');
+  });
+
   it('covers a full half year', () => {
     const { start, end } = halfYearRange(2027, 1);
     const shifts = generateShifts({ start, end, services: [general] });

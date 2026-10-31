@@ -35,6 +35,22 @@ CREATE TABLE IF NOT EXISTS user_services (
   PRIMARY KEY (user_id, service_id)
 );
 
+-- Surgeons who manage weekday call for a service (their team).
+CREATE TABLE IF NOT EXISTS service_admins (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  service_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, service_id)
+);
+
+-- Standing weekday assignments, e.g. one surgeon always takes Monday day call.
+CREATE TABLE IF NOT EXISTS routine_days (
+  service_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('day', 'night')),
+  weekday INTEGER NOT NULL CHECK (weekday BETWEEN 1 AND 5),
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (service_id, kind, weekday)
+);
+
 CREATE TABLE IF NOT EXISTS periods (
   id TEXT PRIMARY KEY,
   year INTEGER NOT NULL,

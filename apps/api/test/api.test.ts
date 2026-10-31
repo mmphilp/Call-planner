@@ -109,6 +109,55 @@ describe('locum cover', () => {
   }, 30_000);
 });
 
+describe('team admins and routine days', () => {
+  it('lets a team admin run their weekday call without touching weekends or other teams', async () => {
+    const users = (await call(adminToken, 'GET', '/api/users')).body;
+    const id = (email: string) => users.find((u: any) => u.email === email).id;
+    const [s1, s2, s3] = ['s1@x.org', 's2@x.org', 's3@x.org'].map(id);
+    // s1 manages the Hand team's weekday call.
+    await call(adminToken, 'PATCH', `/api/users/${s1}`, { adminServiceIds: ['hand'] });
+    const lead = surgeonTokens[0];
+
+    expect((await call(lead, 'GET', '/api/users')).status).toBe(200);
+    expect((await call(lead, 'PUT', '/api/routine', { serviceId: 'hand', kind: 'day', weekday: 1, userId: s2 })).status).toBe(200);
+    expect((await call(lead, 'PUT', '/api/routine', { serviceId: 'hand', kind: 'day', weekday: 3, userId: s3 })).status).toBe(200);
+    expect((await call(lead, 'PUT', '/api/routine', { serviceId: 'general', kind: 'day', weekday: 1, userId: s2 })).status).toBe(403);
+    expect((await call(surgeonTokens[1], 'GET', '/api/routine')).status).toBe(403);
+
+    const { body: p } = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2, holidays: ['2027-09-06'] });
+    await call(adminToken, 'POST', '/api/requests', { periodId: p.id, userId: s2, type: 'unavailable', startDate: '2027-08-02', endDate: '2027-08-06' });
+
+    // Team admins can see drafts but not change the period itself or weekends.
+    expect((await call(lead, 'GET', `/api/periods/${p.id}/schedule`)).status).toBe(200);
+    expect((await call(lead, 'PATCH', `/api/periods/${p.id}`, { status: 'open' })).status).toBe(403);
+    expect((await call(lead, 'PUT', `/api/periods/${p.id}/assignments/general:weekend:2027-07-02`, { userId: s1 })).status).toBe(403);
+    expect((await call(lead, 'POST', `/api/periods/${p.id}/optimize`, { serviceIds: ['general'] })).status).toBe(403);
+
+    const opt = await call(lead, 'POST', `/api/periods/${p.id}/optimize`, { seed: 2 });
+    expect(opt.status).toBe(200);
+    expect(opt.body.unassignedShiftIds).toEqual([]);
+    const sched = (await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`)).body;
+    const who = new Map(sched.assignments.map((a: any) => [a.shiftId, a.userId]));
+    const handDays = sched.shifts.filter((s: any) => s.serviceId === 'hand');
+    expect(handDays.every((s: any) => who.has(s.id))).toBe(true);
+    expect(sched.shifts.filter((s: any) => s.serviceId === 'general').some((s: any) => who.has(s.id))).toBe(false);
+    const mondays = handDays.filter((s: any) => new Date(s.date).getUTCDay() === 1);
+    for (const s of mondays) {
+      if (s.date >= '2027-08-02' && s.date <= '2027-08-06') expect(who.get(s.id)).not.toBe(s2);
+      else if (s.date !== '2027-09-06') expect(who.get(s.id)).toBe(s2);
+    }
+    expect(handDays.filter((s: any) => new Date(s.date).getUTCDay() === 3).every((s: any) => who.get(s.id) === s3)).toBe(true);
+
+    // The overall admin then fills weekends only; the Hand team's days stay put.
+    await call(adminToken, 'POST', `/api/periods/${p.id}/optimize`, { seed: 3, kinds: ['weekend'] });
+    const after = (await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`)).body;
+    const who2 = new Map(after.assignments.map((a: any) => [a.shiftId, a.userId]));
+    expect(handDays.every((s: any) => who2.get(s.id) === who.get(s.id))).toBe(true);
+    expect(after.shifts.filter((s: any) => s.kind === 'weekend').every((s: any) => who2.has(s.id))).toBe(true);
+    expect(after.shifts.filter((s: any) => s.serviceId === 'general' && s.kind !== 'weekend').some((s: any) => who2.has(s.id))).toBe(false);
+  }, 30_000);
+});
+
 describe('full scheduling workflow', () => {
   it('collects requests, optimizes, edits, publishes and shares the schedule', async () => {
     const created = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2, holidays: ['2027-09-06'] });
@@ -137,7 +186,8 @@ describe('full scheduling workflow', () => {
 
     // Surgeons only see their own requests; admins see all.
     expect((await call(surgeonTokens[1], 'GET', `/api/requests?periodId=${periodId}`)).body).toHaveLength(1);
-    expect((await call(adminToken, 'GET', `/api/requests?periodId=${periodId}`)).body).toHaveLength(2);
+    expect((await call(adminToken, 'GET', `/api/requests?periodId=${periodId}&all=1`)).body).toHaveLength(2);
+    expect((await call(surgeonTokens[1], 'GET', `/api/requests?periodId=${periodId}&all=1`)).body).toHaveLength(1);
 
     await call(adminToken, 'PATCH', `/api/requests/${filed.body.id}`, { status: 'approved' });
     await call(adminToken, 'PATCH', `/api/periods/${periodId}`, { status: 'closed' });

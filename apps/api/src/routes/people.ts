@@ -2,9 +2,9 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { transaction, type Db } from '../db';
-import { httpError, me, parse, requireAdmin } from '../http';
+import { httpError, me, parse, requireAdmin, requireScheduler } from '../http';
 import { hashPassword, verifyPassword } from '../passwords';
-import { getUser, getUserRowByEmail, listServices, listUsers, setUserServices, toService } from '../repo';
+import { getUser, getUserRowByEmail, listServices, listUsers, setUserAdminServices, setUserServices, toService } from '../repo';
 
 // Field rules without defaults, so partial updates (PATCH) only touch the
 // fields actually sent. Creating applies the defaults.
@@ -17,6 +17,8 @@ const userFields = z.object({
   takesCall: z.boolean(),
   phone: z.string().nullable().optional(),
   serviceIds: z.array(z.string()),
+  /** Services whose weekday call this person manages. */
+  adminServiceIds: z.array(z.string()),
   password: z.string().min(8),
 });
 const userBody = userFields.extend({
@@ -25,6 +27,7 @@ const userBody = userFields.extend({
   active: userFields.shape.active.default(true),
   takesCall: userFields.shape.takesCall.default(true),
   serviceIds: userFields.shape.serviceIds.default([]),
+  adminServiceIds: userFields.shape.adminServiceIds.default([]),
 });
 const userPatch = userFields.partial();
 
@@ -69,6 +72,7 @@ export function createUser(db: Db, input: z.input<typeof userBody>) {
       newCalendarToken(),
     );
     setUserServices(db, id, u.serviceIds);
+    setUserAdminServices(db, id, u.adminServiceIds);
   });
   return getUser(db, id)!;
 }
@@ -103,8 +107,9 @@ export function peopleRoutes(app: FastifyInstance, db: Db) {
     return { ok: true };
   });
 
+  // Team admins need the roster to fill their team's shifts.
   app.get('/api/users', async (req) => {
-    requireAdmin(req);
+    requireScheduler(req);
     return listUsers(db);
   });
 
@@ -139,6 +144,7 @@ export function peopleRoutes(app: FastifyInstance, db: Db) {
         if (val !== undefined) db.prepare(`UPDATE users SET ${col} = ? WHERE id = ?`).run(val as any, req.params.id);
       }
       if (body.serviceIds) setUserServices(db, req.params.id, body.serviceIds);
+      if (body.adminServiceIds) setUserAdminServices(db, req.params.id, body.adminServiceIds);
     });
     return getUser(db, req.params.id);
   });

@@ -2,6 +2,7 @@ import { mergeRules, type Rules } from '@call-planner/core';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { del, get, patch, post, type Period, type Report, type RequestRow, type Schedule, type User } from '../api';
+import { useMe } from '../me';
 import { useLoad } from '../useLoad';
 import { FairnessTab } from './FairnessTab';
 import { STATUS_LABEL } from './Periods';
@@ -19,12 +20,13 @@ type Tab = 'overview' | 'requests' | 'schedule' | 'fairness' | 'rules';
 
 export function PeriodPage() {
   const { id } = useParams();
-  const [tab, setTab] = useState<Tab>('overview');
+  const { isSuper } = useMe();
+  const [tab, setTab] = useState<Tab>(isSuper ? 'overview' : 'schedule');
   const { data, error, reload } = useLoad<PeriodData>(
     async () => {
       const [schedule, requests, report, users] = await Promise.all([
         get<Schedule>(`/api/periods/${id}/schedule`),
-        get<RequestRow[]>(`/api/requests?periodId=${id}`),
+        get<RequestRow[]>(`/api/requests?periodId=${id}&all=1`),
         get<Report>(`/api/periods/${id}/report`),
         get<User[]>('/api/users'),
       ]);
@@ -62,7 +64,10 @@ export function PeriodPage() {
             ['fairness', 'Fairness'],
             ['rules', 'Rules'],
           ] as [Tab, string][]
-        ).map(([t, label]) => (
+        )
+          // Team admins work on their weekday schedule; period setup stays with the overall admin.
+          .filter(([t]) => isSuper || t === 'requests' || t === 'schedule' || t === 'fairness')
+          .map(([t, label]) => (
           <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
             {label}
           </button>

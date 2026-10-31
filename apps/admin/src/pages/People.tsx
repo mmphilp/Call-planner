@@ -13,6 +13,7 @@ const blank: Draft = {
   takesCall: true,
   phone: '',
   serviceIds: [],
+  adminServiceIds: [],
   password: '',
 };
 
@@ -77,7 +78,12 @@ export function PeoplePage({ currentUserId }: { currentUserId: string }) {
                 <td>{u.email}</td>
                 <td className="small">{u.takesCall ? u.serviceIds.map((s) => serviceName.get(s) ?? s).join(', ') || <span className="badge warn">None</span> : <span className="muted">No call</span>}</td>
                 <td className="num">{u.takesCall ? `${Math.round(u.fte * 100)}%` : '—'}</td>
-                <td>{u.role === 'admin' ? 'Admin' : 'Surgeon'}</td>
+                <td>
+                  {u.role === 'admin' ? 'Admin' : 'Surgeon'}
+                  {u.role !== 'admin' && u.adminServiceIds.length > 0 && (
+                    <div className="small muted">Team admin: {u.adminServiceIds.map((s) => serviceName.get(s) ?? s).join(', ')}</div>
+                  )}
+                </td>
                 <td>{u.active ? <span className="badge ok">Active</span> : <span className="badge">Inactive</span>}</td>
                 <td><button className="link" onClick={() => open({ ...u, phone: u.phone ?? '', password: '' })}>Edit</button></td>
               </tr>
@@ -136,6 +142,36 @@ export function PeoplePage({ currentUserId }: { currentUserId: string }) {
                       </label>
                     ))}
                   </div>
+                </fieldset>
+              )}
+              {draft.role === 'surgeon' && (
+                <fieldset className="full" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>
+                  <legend className="small muted">Team admin for weekday call</legend>
+                  <div className="row">
+                    {data.services.filter((s) => s.coversWeekdayDay || s.coversWeekdayNight).map((s) => (
+                      <label key={s.id} className="check">
+                        <input
+                          type="checkbox"
+                          checked={draft.adminServiceIds.includes(s.id)}
+                          onChange={(e) =>
+                            setDraft({
+                              ...draft,
+                              adminServiceIds: e.target.checked
+                                ? [...draft.adminServiceIds, s.id]
+                                : draft.adminServiceIds.filter((x) => x !== s.id),
+                            })
+                          }
+                        />
+                        {s.name}
+                      </label>
+                    ))}
+                    {!data.services.some((s) => s.coversWeekdayDay || s.coversWeekdayNight) && (
+                      <span className="small muted">No services cover weekdays yet (set this up on the Services page).</span>
+                    )}
+                  </div>
+                  <p className="small muted" style={{ margin: '6px 0 0' }}>
+                    Can sign in to this console to set routine days and build these teams’ weekday schedule. Weekends stay with you.
+                  </p>
                 </fieldset>
               )}
             </div>

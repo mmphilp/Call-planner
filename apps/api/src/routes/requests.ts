@@ -3,7 +3,7 @@ import { addDays } from '@call-planner/core';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Db } from '../db';
-import { dateStr, httpError, me, parse, requireAdmin } from '../http';
+import { dateStr, httpError, isScheduler, me, parse, requireAdmin } from '../http';
 import { getPeriod, getRequest, listRequests } from '../repo';
 
 const requestBody = z
@@ -32,9 +32,12 @@ export function requestRoutes(app: FastifyInstance, db: Db) {
   };
 
   app.get('/api/requests', async (req) => {
-    const q = parse(z.object({ periodId: z.string().optional() }), req.query);
+    const q = parse(z.object({ periodId: z.string().optional(), all: z.enum(['1']).optional() }), req.query);
     const user = me(req);
-    return listRequests(db, { periodId: q.periodId, userId: user.role === 'admin' ? undefined : user.id });
+    // Your own requests by default (the app); schedulers, including team
+    // admins (read-only), can ask for everyone's with ?all=1.
+    const everyone = q.all === '1' && isScheduler(user);
+    return listRequests(db, { periodId: q.periodId, userId: everyone ? undefined : user.id });
   });
 
   app.post('/api/requests', async (req, reply) => {

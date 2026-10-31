@@ -248,7 +248,8 @@ class Model {
   }
 }
 
-function requestCovers(r: CallRequest, shift: Shift): boolean {
+/** Does a request's date range (and shift-kind filter) touch this shift? */
+export function requestCovers(r: CallRequest, shift: Shift): boolean {
   if (r.shiftKinds?.length && !r.shiftKinds.includes(shift.kind)) return false;
   const from = toMinutes(`${r.startDate}T00:00`);
   const to = toMinutes(`${addDays(r.endDate, 1)}T00:00`);

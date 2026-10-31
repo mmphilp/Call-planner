@@ -21,6 +21,20 @@ Call scheduling for a surgical group: surgeons send requests from an iPhone/Andr
 3. **Build schedule** (admin): close requests, approve/deny them, click **Generate optimized schedule**, then adjust by hand. Any hand-picked assignment is locked, so re-optimizing works around it.
 4. **Publish**: surgeons see their call in the app and can subscribe to it in their phone's calendar.
 
+### Multi-specialty groups: team admins and routine days
+
+* **Shared weekends, team weekdays.** Make one service cover weekend blocks only (e.g. *Specialty Coverage*, with everyone on it), and give each specialty its own service for weekday days and nights. Weekend blocks apply to the whole group, so no specialty gets a Friday-night shift or a weekday shift on a holiday folded into a long weekend.
+* **Team admins.** On a surgeon's profile, tick *Team admin for weekday call* for their specialty. They can sign in to the admin console and:
+  * set routine days;
+  * edit their team's weekday shifts;
+  * optimize just their team's weekdays (nothing else is changed);
+  * see requests and fairness, read-only.
+
+  Weekends, surgeons, services, rules, request approvals and publishing stay with the overall admin.
+* **Routine days** (*Weekday call* page). Pick who always takes a given weekday's day or night shift, e.g. Mon/Wed days. When the schedule is optimized, routine days are filled first, except on holidays or when that surgeon has time off. They count toward fair share, and everything left on *Rotate* is shared out.
+* **Locums.** In any shift's dropdown, choose *Locum / outside cover…*. That shift is then left out of the optimizer and the fair-share math.
+* **Scope.** The overall admin can optimize *Everything*, *Weekends only*, or one team's weekdays.
+
 ### What the optimizer does
 
 * **Never** (hard rules): schedules approved time off; schedules someone for a service they don't cover; double-books; gives less than *12h* rest between shifts (so no day after a night); gives more than *2* weekday nights a week; or back-to-back weekends. If a shift can't be filled without breaking a rule it's left open and flagged.
