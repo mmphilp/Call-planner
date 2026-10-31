@@ -49,6 +49,8 @@ export interface RequestRow extends CallRequest {
 
 export interface Schedule {
   period: Period;
+  /** The shifts no longer match the services' coverage (admins only). */
+  shiftsOutOfDate?: boolean;
   services: (Service & { color: string; sort: number })[];
   /** coveredBy: covered from outside the call pool (e.g. a locum). */
   shifts: (Shift & { coveredBy?: string })[];

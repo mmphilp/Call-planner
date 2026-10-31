@@ -51,12 +51,17 @@ describe('auth', () => {
     expect(me.body.calendarPath).toMatch(/^\/cal\/.+\.ics$/);
   });
 
-  it('rate-limits repeated login attempts', async () => {
+  it('locks out repeated wrong passwords but not a busy shared network', async () => {
+    // Plenty of successful sign-ins from one address (a hospital network) are fine.
+    for (let i = 0; i < 20; i++) expect(await login('s2@x.org')).toBeTruthy();
     const statuses = [];
     for (let i = 0; i < 12; i++) {
       statuses.push((await call(null, 'POST', '/api/auth/login', { email: 's1@x.org', password: 'wrong' })).status);
     }
+    expect(statuses.slice(0, 10).every((s) => s === 401)).toBe(true);
     expect(statuses.at(-1)).toBe(429);
+    // Other accounts on the same network can still sign in.
+    expect(await login('s3@x.org')).toBeTruthy();
   });
 
   it('keeps admin endpoints away from surgeons', async () => {
@@ -210,6 +215,31 @@ describe('cross-cover', () => {
     await call(adminToken, 'PUT', `/api/periods/${p.id}/assignments/general:day:2027-08-12`, { userId: other.id });
     who = await owner();
     expect((who.get('endo:day:2027-08-12') as any).userId).toBe(other.id);
+  }, 30_000);
+});
+
+describe('service coverage changes', () => {
+  it('rebuilds unpublished schedules and flags published ones', async () => {
+    const { body: open } = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 1 });
+    const { body: pub } = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2 });
+    await call(adminToken, 'PATCH', `/api/periods/${pub.id}`, { status: 'published' });
+
+    // A shared weekend-only service never gets weekday shifts.
+    await call(adminToken, 'POST', '/api/services', { name: 'Specialty Coverage', coversWeekdayDay: false, coversWeekdayNight: false, coversWeekend: true });
+    let sched = (await call(adminToken, 'GET', `/api/periods/${open.id}/schedule`)).body;
+    expect(sched.shifts.filter((s: any) => s.serviceId === 'specialty-coverage').every((s: any) => s.kind === 'weekend')).toBe(true);
+    expect(sched.shifts.some((s: any) => s.serviceId === 'specialty-coverage')).toBe(true);
+
+    // Turning off General's weekday nights takes effect without a manual rebuild.
+    await call(adminToken, 'PATCH', '/api/services/general', { coversWeekdayNight: false });
+    sched = (await call(adminToken, 'GET', `/api/periods/${open.id}/schedule`)).body;
+    expect(sched.shifts.some((s: any) => s.serviceId === 'general' && s.kind === 'night')).toBe(false);
+    expect(sched.shiftsOutOfDate).toBe(false);
+
+    // The published schedule is left alone but flagged.
+    const published = (await call(adminToken, 'GET', `/api/periods/${pub.id}/schedule`)).body;
+    expect(published.shifts.some((s: any) => s.serviceId === 'general' && s.kind === 'night')).toBe(true);
+    expect(published.shiftsOutOfDate).toBe(true);
   }, 30_000);
 });
 

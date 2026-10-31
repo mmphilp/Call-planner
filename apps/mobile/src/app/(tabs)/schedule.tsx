@@ -1,10 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, View } from 'react-native';
+import { MonthCoverage } from '@/components/MonthCoverage';
 import { Card, Chip, Empty, ErrorText, Screen, SectionHeader, T, useApi } from '@/components/ui';
 import { api, type Period, type Schedule } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { addDays, dayOfWeek, KIND_LABEL, nowLocal, shiftSpan, shortDate, todayStr } from '@/lib/format';
+import { addDays, dayOfWeek, KIND_LABEL, monthLabel, nowLocal, shiftSpan, shortDate, todayStr } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
+
+/** Shifts to list under a day: that day's shifts, plus a weekend block on each day it covers. */
+function shiftsOn(schedule: Schedule | null, d: string) {
+  return schedule?.shifts.filter((s) => s.date === d || (s.kind === 'weekend' && s.date < d && s.end > `${d}T07:00`)) ?? [];
+}
+
+function shiftMonth(month: string, delta: number) {
+  const [y, m] = month.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1 + delta, 1)).toISOString().slice(0, 7);
+}
 
 /** Monday on or before the given date. */
 function mondayOf(date: string) {
@@ -21,6 +32,9 @@ export default function ScheduleScreen() {
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [week, setWeek] = useState(mondayOf(todayStr()));
+  const [mode, setMode] = useState<'week' | 'month'>('week');
+  const [month, setMonth] = useState(todayStr().slice(0, 7));
+  const [day, setDay] = useState<string | null>(todayStr());
 
   // Default to the period that contains today, else the latest published one.
   useEffect(() => {
@@ -38,6 +52,8 @@ export default function ScheduleScreen() {
         const today = todayStr();
         const anchor = today >= s.period.startDate && today <= s.period.endDate ? today : s.period.startDate;
         setWeek(mondayOf(anchor));
+        setMonth(anchor.slice(0, 7));
+        setDay(anchor);
       })
       .catch((e: Error) => setError(e.message));
   }, [periodId]);
@@ -48,11 +64,33 @@ export default function ScheduleScreen() {
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(week, i));
   // Weekend blocks also show on the Saturday and Sunday they cover.
-  const shiftsByDay = new Map(
-    days.map((d) => [
-      d,
-      schedule?.shifts.filter((s) => s.date === d || (s.kind === 'weekend' && s.date < d && s.end > `${d}T07:00`)) ?? [],
-    ]),
+  const shiftsByDay = new Map(days.map((d) => [d, shiftsOn(schedule, d)]));
+
+  // For the month grid: days I'm on call, and days with an uncovered shift.
+  const { mine, open } = useMemo(() => {
+    const mine = new Set<string>();
+    const open = new Set<string>();
+    if (!schedule) return { mine, open };
+    const first = `${month}-01`;
+    for (let d = first; d.startsWith(month); d = addDays(d, 1)) {
+      for (const s of shiftsOn(schedule, d)) {
+        if (owner.get(s.id) === user?.id) mine.add(d);
+        else if (!owner.get(s.id) && !s.coveredBy) open.add(d);
+      }
+    }
+    return { mine, open };
+  }, [schedule, month, owner, user?.id]);
+
+  const line = (s: Schedule['shifts'][number], withTimes = true) => (
+    <ShiftLine
+      key={s.id}
+      label={`${services.get(s.serviceId)?.name} · ${KIND_LABEL[s.kind]}`}
+      sub={withTimes ? shiftSpan(s) : undefined}
+      color={services.get(s.serviceId)?.color}
+      person={people.get(owner.get(s.id) ?? '')}
+      locum={s.coveredBy}
+      me={owner.get(s.id) === user?.id}
+    />
   );
   const now = nowLocal();
   const onNow = (schedule?.shifts ?? []).filter((s) => s.start <= now && now < s.end);
@@ -84,8 +122,53 @@ export default function ScheduleScreen() {
       )}
 
       {schedule && (
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+          <Chip label="Week" selected={mode === 'week'} onPress={() => setMode('week')} />
+          <Chip label="Month" selected={mode === 'month'} onPress={() => setMode('month')} />
+        </View>
+      )}
+
+      {schedule && mode === 'month' && (
         <>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Pressable onPress={() => setMonth(shiftMonth(month, -1))} hitSlop={12} disabled={month <= schedule.period.startDate.slice(0, 7)}>
+              <T bold style={{ color: t.accent, opacity: month <= schedule.period.startDate.slice(0, 7) ? 0.3 : 1 }}>‹ Prev</T>
+            </Pressable>
+            <T bold>{monthLabel(`${month}-01`)}</T>
+            <Pressable onPress={() => setMonth(shiftMonth(month, 1))} hitSlop={12} disabled={month >= schedule.period.endDate.slice(0, 7)}>
+              <T bold style={{ color: t.accent, opacity: month >= schedule.period.endDate.slice(0, 7) ? 0.3 : 1 }}>Next ›</T>
+            </Pressable>
+          </View>
+          <MonthCoverage
+            month={month}
+            selected={day}
+            onSelect={setDay}
+            mine={mine}
+            open={open}
+            min={schedule.period.startDate}
+            max={schedule.period.endDate}
+          />
+          <View style={{ flexDirection: 'row', gap: 14, justifyContent: 'center' }}>
+            <T muted size={12}><T size={12} style={{ color: t.accent }}>●</T> You’re on call</T>
+            {open.size > 0 && <T muted size={12}><T size={12} style={{ color: t.bad }}>●</T> Uncovered</T>}
+          </View>
+          {day && day.startsWith(month) && (
+            <View style={{ gap: 6 }}>
+              <SectionHeader>
+                {shortDate(day)}
+                {day === todayStr() ? ' · Today' : ''}
+              </SectionHeader>
+              <Card style={{ gap: 10 }}>
+                {shiftsOn(schedule, day).length ? shiftsOn(schedule, day).map((s) => line(s)) : <T muted>No call scheduled.</T>}
+              </Card>
+            </View>
+          )}
+        </>
+      )}
+
+      {schedule && mode === 'week' && (
+        <>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Pressable onPress={() => setWeek(addDays(week, -7))} hitSlop={12} disabled={week <= schedule.period.startDate}>
               <T bold style={{ color: t.accent, opacity: week <= schedule.period.startDate ? 0.3 : 1 }}>‹ Prev</T>
             </Pressable>
@@ -103,19 +186,7 @@ export default function ScheduleScreen() {
                   {shortDate(d)}
                   {d === todayStr() ? ' · Today' : ''}
                 </SectionHeader>
-                <Card style={{ gap: 10 }}>
-                  {list.map((s) => (
-                    <ShiftLine
-                      key={s.id}
-                      label={`${services.get(s.serviceId)?.name} · ${KIND_LABEL[s.kind]}`}
-                      sub={shiftSpan(s)}
-                      color={services.get(s.serviceId)?.color}
-                      person={people.get(owner.get(s.id) ?? '')}
-                      locum={s.coveredBy}
-                      me={owner.get(s.id) === user?.id}
-                    />
-                  ))}
-                </Card>
+                <Card style={{ gap: 10 }}>{list.map((s) => line(s))}</Card>
               </View>
             );
           })}

@@ -40,6 +40,8 @@ Call scheduling for a surgical group: surgeons send requests from an iPhone/Andr
 * **Cross-cover.** A team can name a covering service. When nobody on the team is available for a weekday shift, whoever is on call for that service at the same time covers it too. Cross-cover is shown in italics and recalculated whenever the covering team's schedule changes. Manual picks and locums take priority.
 * **Routine days** (*Weekday call* page). Pick who always takes a given weekday's day or night shift, e.g. Mon/Wed days. When the schedule is optimized, routine days are filled first, except on holidays or when that surgeon has time off. They count toward fair share, and everything left on *Rotate* is shared out.
 * **Locums.** In any shift's dropdown, choose *Locum / outside cover…*. That shift is then left out of the optimizer and the fair-share math.
+* **Calendar.** Once a schedule has assignments, the Schedule tab opens on a month calendar of who covers each service each day. It's printable, and the *Highlight* box picks out one surgeon. In the app, the Schedule screen has a *Month* view: dots mark your call days, and tapping a day lists who's on.
+* **Service coverage.** Tick only the call each service covers; a shared weekend service should only have *Weekend block*. Changing coverage updates unpublished schedules automatically. A published schedule shows a warning with an *Unpublish and rebuild shifts* button.
 * **Scope.** The overall admin can optimize *Everything*, *Weekends only*, or one team's weekdays.
 
 ### What the optimizer does
@@ -139,7 +141,7 @@ Surgeons need to reach the server from their phones anywhere, and logins should 
 * **A reverse proxy you already run** (Caddy, Traefik, Nginx Proxy Manager). Proxy your domain to port 4000, forward 443 on your router, and set `TRUST_PROXY=true`.
 * **Tailscale.** Good for a private demo (your own devices only). Every surgeon would need Tailscale installed, so it's not a fit for the whole group.
 
-Login attempts are limited to 10 per 15 minutes per IP address.
+Wrong passwords are limited to 10 per account per 15 minutes, and 50 per network address. Successful sign-ins are never limited, so a whole hospital on one shared network is fine.
 
 ### 3. Update, back up, view logs
 

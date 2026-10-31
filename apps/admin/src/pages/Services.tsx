@@ -12,8 +12,12 @@ const blankService: Editable = {
   color: '#2563eb',
   coversWeekdayDay: true,
   coversWeekdayNight: true,
-  coversWeekend: true,
+  // Most services are specialty teams covering weekdays; weekends are usually one shared service.
+  coversWeekend: false,
 };
+
+// Distinct default colors so services are easy to tell apart on the calendar.
+const PALETTE = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#4d7c0f'];
 
 function changes(original: Service, draft: Editable): Partial<Editable> {
   return Object.fromEntries(FIELDS.filter((f) => draft[f] !== original[f]).map((f) => [f, draft[f]]));
@@ -28,7 +32,10 @@ export function ServicesPage() {
 
   // Start editing from the saved values whenever they (re)load.
   useEffect(() => {
-    if (services) setDrafts(Object.fromEntries(services.map((s) => [s.id, { ...s }])));
+    if (!services) return;
+    setDrafts(Object.fromEntries(services.map((s) => [s.id, { ...s }])));
+    const used = new Set(services.map((s) => s.color.toLowerCase()));
+    setAdding((a) => ({ ...a, color: PALETTE.find((c) => !used.has(c)) ?? PALETTE[services.length % PALETTE.length] }));
   }, [services]);
 
   const dirty = (services ?? []).filter((s) => drafts[s.id] && Object.keys(changes(s, drafts[s.id])).length);
@@ -40,7 +47,7 @@ export function ServicesPage() {
     setMsg(null);
     try {
       for (const s of dirty) await patch(`/api/services/${s.id}`, changes(s, drafts[s.id]));
-      setMsg({ ok: true, text: 'Saved. Use “Rebuild shifts from services” on any unpublished schedule to apply coverage changes.' });
+      setMsg({ ok: true, text: 'Saved. Unpublished schedules were updated to match; published ones will show a warning.' });
       reload();
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
@@ -84,7 +91,9 @@ export function ServicesPage() {
       <div className="page-head">
         <div>
           <h1>Services</h1>
-          <div className="muted">Each service needs its own call coverage.</div>
+          <div className="muted">
+            Tick only the call each service covers. A shared weekend service (e.g. Specialty Coverage) should have only <b>Weekend block</b> ticked.
+          </div>
         </div>
         <div className="row">
           {dirty.length > 0 && <span className="muted small">{dirty.length} unsaved change{dirty.length === 1 ? '' : 's'}</span>}
@@ -145,7 +154,7 @@ export function ServicesPage() {
         </table>
       </div>
       <p className="muted small">
-        After changing coverage, open each unpublished schedule and use <b>Rebuild shifts from services</b> on its Overview tab.
+        Coverage changes update unpublished schedules automatically. A published schedule shows a warning until you unpublish and rebuild it.
       </p>
     </>
   );

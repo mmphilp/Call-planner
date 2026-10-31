@@ -2,7 +2,6 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
-import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import Fastify from 'fastify';
 import { openDb, type Db } from './db';
@@ -45,8 +44,6 @@ export async function buildApp(opts: AppOptions) {
 
   await app.register(cors, { origin: true });
   await app.register(jwt, { secret: opts.jwtSecret });
-  // Only routes that opt in (login) are limited.
-  await app.register(rateLimit, { global: false });
 
   app.addHook('onRequest', async (req) => {
     if (!req.url.startsWith('/api/') || req.routeOptions.config.public || req.method === 'OPTIONS') return;

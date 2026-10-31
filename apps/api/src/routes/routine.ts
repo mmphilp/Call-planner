@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Db } from '../db';
 import { canEditService, httpError, me, parse, requireScheduler } from '../http';
-import { listRoutine, toService } from '../repo';
+import { listPeriods, listRoutine, toService } from '../repo';
+import { refreshCover } from '../sync';
 
 /**
  * Routine weekday call: a surgeon who always takes, say, Monday day call for
@@ -34,6 +35,7 @@ export function routineRoutes(app: FastifyInstance, db: Db) {
         throw httpError(400, 'Unknown service');
       }
       db.prepare('UPDATE services SET backup_service_id = ? WHERE id = ?').run(body.backupServiceId, body.serviceId);
+      for (const p of listPeriods(db)) if (p.status !== 'published') refreshCover(db, p.id);
     }
     if (body.weekdayRules !== undefined) {
       db.prepare('UPDATE services SET weekday_rules = ? WHERE id = ?').run(body.weekdayRules ? 1 : 0, body.serviceId);

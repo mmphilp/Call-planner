@@ -55,6 +55,7 @@ export function PeriodPage() {
           Export CSV
         </a>
       </div>
+      {isSuper && data.schedule.shiftsOutOfDate && <OutOfDate period={p} reload={reload} />}
       <div className="tabs">
         {(
           [
@@ -79,6 +80,42 @@ export function PeriodPage() {
       {tab === 'fairness' && <FairnessTab data={data} />}
       {tab === 'rules' && <RulesTab period={p} reload={reload} />}
     </>
+  );
+}
+
+/** Shifts no longer match the services (e.g. a service's weekday/weekend coverage changed). */
+function OutOfDate({ period, reload }: { period: Period; reload: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fix = async () => {
+    const published = period.status === 'published';
+    if (published && !confirm('Unpublish this schedule, rebuild its shifts from the current services, and leave it ready to review and republish?')) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (published) await patch(`/api/periods/${period.id}`, { status: 'closed' });
+      await post(`/api/periods/${period.id}/generate`);
+      reload();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="alert error">
+      <b>This schedule’s shifts don’t match your current service settings.</b> A service’s coverage changed (for example,
+      weekday boxes ticked on a weekend-only service), so some shifts here shouldn’t exist or are missing.{' '}
+      <button className="primary" disabled={busy} onClick={fix} style={{ marginLeft: 6 }}>
+        {period.status === 'published' ? 'Unpublish and rebuild shifts' : 'Rebuild shifts'}
+      </button>
+      {period.status === 'published' && (
+        <div className="small" style={{ marginTop: 6 }}>
+          Assignments on shifts that still exist are kept. Review the Schedule tab (re-optimize if needed), then publish again.
+        </div>
+      )}
+      {error && <div className="small">{error}</div>}
+    </div>
   );
 }
 

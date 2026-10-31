@@ -2,11 +2,9 @@ import { randomUUID } from 'node:crypto';
 import {
   applyTeamRules,
   backupMap,
-  coverFromBackup,
   dayOfWeek,
   DEFAULT_RULES,
   evaluateSchedule,
-  generateShifts,
   halfYearRange,
   optimizeSchedule,
   planWeeks,
@@ -20,6 +18,7 @@ import {
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { transaction, type Db } from '../db';
+import { regenerate as syncRegenerate, refreshCover as syncRefreshCover, shiftsOutOfDate } from '../sync';
 import { canEditShift, dateStr, httpError, isScheduler, me, parse, requireAdmin, requireScheduler } from '../http';
 import {
   callPool,
@@ -72,48 +71,8 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     return p;
   };
 
-  const regenerate = (p: Period) => {
-    const shifts = generateShifts({
-      start: p.startDate,
-      end: p.endDate,
-      services: listServices(db),
-      holidays: p.holidays,
-    });
-    transaction(db, () => {
-      const keep = new Set(shifts.map((s) => s.id));
-      const old = listShifts(db, p.id);
-      const del = db.prepare('DELETE FROM shifts WHERE id = ?');
-      for (const s of old) if (!keep.has(s.id)) del.run(s.id);
-      const upsert = db.prepare(
-        `INSERT INTO shifts (id, period_id, service_id, kind, date, start, end, holiday)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (id) DO UPDATE SET start = excluded.start, end = excluded.end, holiday = excluded.holiday`,
-      );
-      for (const s of shifts) upsert.run(s.id, p.id, s.serviceId, s.kind, s.date, s.start, s.end, s.holiday ? 1 : 0);
-    });
-    return shifts.length;
-  };
-
-  /**
-   * Re-apply cross-cover: unfilled weekday shifts of a team with a covering
-   * service go to whoever is on that service's matching shift. Run after
-   * anything that changes assignments, so cover follows the latest schedule.
-   */
-  const refreshCover = (periodId: string) => {
-    transaction(db, () => {
-      db.prepare(
-        "DELETE FROM assignments WHERE source = 'backup' AND shift_id IN (SELECT id FROM shifts WHERE period_id = ?)",
-      ).run(periodId);
-      const services = listServices(db);
-      if (!services.some((s) => s.backupServiceId)) return;
-      const ins = db.prepare(
-        "INSERT OR IGNORE INTO assignments (shift_id, user_id, locked, source) VALUES (?, ?, 0, 'backup')",
-      );
-      for (const a of coverFromBackup(poolShifts(db, periodId), listAssignments(db, periodId), services)) {
-        ins.run(a.shiftId, a.userId);
-      }
-    });
-  };
+  const regenerate = (p: Period) => syncRegenerate(db, p);
+  const refreshCover = (periodId: string) => syncRefreshCover(db, periodId);
 
   app.get('/api/rules/defaults', async () => DEFAULT_RULES);
 
@@ -198,6 +157,8 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     const people = listUsers(db).map((u) => ({ id: u.id, name: u.name, phone: u.phone }));
     return {
       period: p,
+      // Admins are warned when the shifts no longer match the services.
+      shiftsOutOfDate: isAdmin ? shiftsOutOfDate(db, p) : undefined,
       services: listServices(db),
       shifts: listShifts(db, p.id),
       assignments: isAdmin || p.status === 'published' ? listAssignments(db, p.id) : [],

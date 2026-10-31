@@ -2,6 +2,7 @@ import { dayOfWeek, eachDay, weekStart, type Shift } from '@call-planner/core';
 import { useMemo, useState } from 'react';
 import { post, put, type RequestRow } from '../api';
 import { useMe } from '../me';
+import { CalendarView } from './CalendarView';
 import type { PeriodData } from './Period';
 
 const LOCUM = '__locum__';
@@ -62,7 +63,10 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
   const locumCount = schedule.shifts.filter((s) => s.coveredBy && inScope(s)).length;
   const hasWeekday = schedule.shifts.some((s) => s.kind !== 'weekend');
   const hasWeekend = schedule.shifts.some((s) => s.kind === 'weekend');
-  const [view, setView] = useState<'weekdays' | 'weekends'>(hasWeekday ? 'weekdays' : 'weekends');
+  // Once a schedule has assignments, open on the calendar overview.
+  const [view, setView] = useState<'calendar' | 'weekdays' | 'weekends'>(
+    schedule.assignments.length ? 'calendar' : hasWeekday ? 'weekdays' : 'weekends',
+  );
 
   const shiftById = useMemo(() => new Map(schedule.shifts.map((s) => [s.id, s])), [schedule.shifts]);
   const owner = useMemo(() => new Map(schedule.assignments.map((a) => [a.shiftId, a])), [schedule.assignments]);
@@ -234,12 +238,13 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
         </p>
       </div>
 
-      {hasWeekday && hasWeekend && (
-        <div className="row" style={{ marginBottom: 8 }}>
-          <button className={view === 'weekdays' ? 'primary' : ''} onClick={() => setView('weekdays')}>Weekdays</button>
-          <button className={view === 'weekends' ? 'primary' : ''} onClick={() => setView('weekends')}>Weekends</button>
-        </div>
-      )}
+      <div className="row no-print" style={{ marginBottom: 8 }}>
+        <button className={view === 'calendar' ? 'primary' : ''} onClick={() => setView('calendar')}>Calendar</button>
+        {hasWeekday && <button className={view === 'weekdays' ? 'primary' : ''} onClick={() => setView('weekdays')}>Weekdays</button>}
+        {hasWeekend && <button className={view === 'weekends' ? 'primary' : ''} onClick={() => setView('weekends')}>Weekends</button>}
+      </div>
+
+      {view === 'calendar' && <CalendarView data={data} highlight={highlight} />}
 
       {view === 'weekends' && (
         <WeekendTable data={data} cell={cell} shiftById={shiftById} owner={owner} highlight={highlight} />

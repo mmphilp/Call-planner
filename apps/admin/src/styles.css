@@ -140,3 +140,28 @@ dialog::backdrop { background: rgb(0 0 0 / 0.4); }
   .brand { display: none; }
   .main { padding: 16px; }
 }
+
+/* Month calendar of coverage */
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+.cal-head { padding: 6px 8px; font-size: 12px; font-weight: 600; color: var(--muted); background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.cal-cell { min-height: 110px; padding: 6px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cal-cell:nth-child(7n) { border-right: none; }
+.cal-cell.empty { background: var(--surface-2); }
+.cal-cell.wknd { background: var(--weekend-bg); }
+.cal-cell.holiday .cal-date { color: var(--warn); font-weight: 700; }
+.cal-date { font-size: 12px; font-weight: 600; color: var(--muted); }
+.cal-entry { font-size: 12px; line-height: 1.3; padding: 1px 5px; border-left: 3px solid; background: var(--surface); border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-entry.cover { font-style: italic; }
+.cal-entry.open { color: var(--bad); font-weight: 600; }
+.cal-entry.hl { background: var(--accent); color: var(--accent-text); }
+.print-only { display: none; }
+
+@media print {
+  .sidebar, .page-head, .tabs, .no-print, .card, .alert { display: none !important; }
+  .print-only { display: block; }
+  .shell { display: block; }
+  .main { padding: 0; }
+  body { background: #fff; }
+  .cal-cell { min-height: 90px; }
+  .cal-entry.hl { background: none; color: inherit; font-weight: 700; }
+}

@@ -2,6 +2,8 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { transaction, type Db } from '../db';
+import { LoginGuard } from '../login-guard';
+import { syncUnpublished } from '../sync';
 import { httpError, me, parse, requireAdmin, requireScheduler } from '../http';
 import { hashPassword, verifyPassword } from '../passwords';
 import { getUser, getUserRowByEmail, listServices, listUsers, setUserAdminServices, setUserServices, toService } from '../repo';
@@ -78,19 +80,21 @@ export function createUser(db: Db, input: z.input<typeof userBody>) {
 }
 
 export function peopleRoutes(app: FastifyInstance, db: Db) {
-  app.post(
-    '/api/auth/login',
-    { config: { public: true, rateLimit: { max: 10, timeWindow: '15 minutes' } } },
-    async (req) => {
+  const guard = new LoginGuard();
+
+  app.post('/api/auth/login', { config: { public: true } }, async (req) => {
     const { email, password } = parse(z.object({ email: z.string(), password: z.string() }), req.body);
+    const wait = guard.blockedFor(req.ip, email.trim());
+    if (wait) throw httpError(429, `Too many wrong passwords. Try again in ${wait} minute${wait === 1 ? '' : 's'}.`);
     const row = getUserRowByEmail(db, email.trim());
     if (!row || !row.active || !verifyPassword(password, row.password_hash)) {
+      guard.recordFailure(req.ip, email.trim());
       throw httpError(401, 'Incorrect email or password');
     }
+    guard.recordSuccess(req.ip, email.trim());
     const token = app.jwt.sign({ sub: row.id }, { expiresIn: '30d' });
     return { token, user: getUser(db, row.id) };
-    },
-  );
+  });
 
   app.get('/api/me', async (req) => {
     const row = db.prepare('SELECT calendar_token FROM users WHERE id = ?').get(me(req).id) as {
@@ -160,6 +164,7 @@ export function peopleRoutes(app: FastifyInstance, db: Db) {
       `INSERT INTO services (id, name, color, covers_day, covers_night, covers_weekend, sort)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).run(id, s.name, s.color, +s.coversWeekdayDay, +s.coversWeekdayNight, +s.coversWeekend, s.sort);
+    syncUnpublished(db);
     reply.code(201);
     return toService(db.prepare('SELECT * FROM services WHERE id = ?').get(id) as any);
   });
@@ -180,6 +185,10 @@ export function peopleRoutes(app: FastifyInstance, db: Db) {
     }
     const row = db.prepare('SELECT * FROM services WHERE id = ?').get(req.params.id);
     if (!row) throw httpError(404, 'Service not found');
+    // Coverage changes take effect on every unpublished schedule right away.
+    if (s.coversWeekdayDay !== undefined || s.coversWeekdayNight !== undefined || s.coversWeekend !== undefined) {
+      syncUnpublished(db);
+    }
     return toService(row as any);
   });
 
@@ -189,6 +198,7 @@ export function peopleRoutes(app: FastifyInstance, db: Db) {
       throw httpError(409, 'This service has shifts in a schedule; remove them first');
     }
     db.prepare('DELETE FROM services WHERE id = ?').run(req.params.id);
+    syncUnpublished(db);
     return { ok: true };
   });
 }
