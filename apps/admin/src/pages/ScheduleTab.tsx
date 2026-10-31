@@ -27,6 +27,9 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<OptimizeSummary | null>(null);
+  const hasWeekday = schedule.shifts.some((s) => s.kind !== 'weekend');
+  const hasWeekend = schedule.shifts.some((s) => s.kind === 'weekend');
+  const [view, setView] = useState<'weekdays' | 'weekends'>(hasWeekday ? 'weekdays' : 'weekends');
 
   const shiftById = useMemo(() => new Map(schedule.shifts.map((s) => [s.id, s])), [schedule.shifts]);
   const owner = useMemo(() => new Map(schedule.assignments.map((a) => [a.shiftId, a])), [schedule.assignments]);
@@ -44,7 +47,7 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
   const months = [...new Set(eachDay(p.startDate, p.endDate).map((d) => Number(d.slice(5, 7)) - 1))];
   const monthPrefix = `${p.year}-${String(month + 1).padStart(2, '0')}`;
   const weekdays = eachDay(p.startDate, p.endDate).filter((d) => d.startsWith(monthPrefix) && dayOfWeek(d) % 6 !== 0);
-  const services = schedule.services.filter((s) => s.coversWeekdayDay || s.coversWeekdayNight || s.coversWeekend);
+  const services = schedule.services.filter((s) => s.coversWeekdayDay || s.coversWeekdayNight);
 
   const optimize = async () => {
     const lockedCount = schedule.assignments.filter((a) => a.locked).length;
@@ -146,6 +149,19 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
         </p>
       </div>
 
+      {hasWeekday && hasWeekend && (
+        <div className="row" style={{ marginBottom: 8 }}>
+          <button className={view === 'weekdays' ? 'primary' : ''} onClick={() => setView('weekdays')}>Weekdays</button>
+          <button className={view === 'weekends' ? 'primary' : ''} onClick={() => setView('weekends')}>Weekends</button>
+        </div>
+      )}
+
+      {view === 'weekends' && (
+        <WeekendTable data={data} cell={cell} shiftById={shiftById} owner={owner} highlight={highlight} />
+      )}
+
+      {view === 'weekdays' && (
+      <>
       <div className="tabs" style={{ marginBottom: 8 }}>
         {months.map((m) => (
           <button key={m} className={m === month ? 'active' : ''} onClick={() => setMonth(m)}>{MONTHS[m]}</button>
@@ -191,6 +207,114 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
                       </td>
                     ),
                   ])}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      </>
+      )}
+    </>
+  );
+}
+
+const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** 'Fri Jul 3' from 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:mm'. */
+function dayLabel(t: string) {
+  const d = t.slice(0, 10);
+  return `${DOW[dayOfWeek(d)]} ${MONTH_SHORT[Number(d.slice(5, 7)) - 1]} ${Number(d.slice(8, 10))}`;
+}
+
+function timeLabel(t: string) {
+  const h = Number(t.slice(11, 13));
+  return `${h % 12 || 12}${h >= 12 ? 'pm' : 'am'}`;
+}
+
+/** Every weekend block in the period on one page: who's on, who's away. */
+function WeekendTable({
+  data,
+  cell,
+  shiftById,
+  owner,
+  highlight,
+}: {
+  data: PeriodData;
+  cell: (shift: Shift | undefined, absorbedLabel: string) => React.ReactNode;
+  shiftById: Map<string, Shift>;
+  owner: Map<string, { userId: string }>;
+  highlight: string;
+}) {
+  const { schedule, requests, users } = data;
+  const services = schedule.services.filter((s) => s.coversWeekend);
+  const weekends = schedule.shifts.filter((s) => s.kind === 'weekend');
+  const fridays = [...new Set(weekends.map((s) => s.date))].sort();
+  const nameOf = new Map(users.map((u) => [u.id, u.name]));
+  const pool = users.filter((u) => u.active && u.takesCall && services.some((s) => u.serviceIds.includes(s.id)));
+
+  const counts = new Map(pool.map((u) => [u.id, 0]));
+  for (const s of weekends) {
+    const a = owner.get(s.id);
+    if (a) counts.set(a.userId, (counts.get(a.userId) ?? 0) + 1);
+  }
+
+  const awayLabels = (shift: Shift) => {
+    const out: { text: string; strong: boolean }[] = [];
+    for (const r of requests) {
+      if (r.status === 'denied' || !touches(r, shift)) continue;
+      const n = nameOf.get(r.userId) ?? r.userName;
+      if (r.type === 'unavailable') out.push({ text: r.status === 'approved' ? n : `${n} (pending)`, strong: r.status === 'approved' });
+      else if (r.type === 'prefer_off') out.push({ text: `${n} (prefers off)`, strong: false });
+      else out.push({ text: `${n} wants it`, strong: false });
+    }
+    return out;
+  };
+
+  return (
+    <>
+      <div className="row" style={{ marginBottom: 8 }}>
+        <span className="muted small">Weekends assigned:</span>
+        {pool.map((u) => (
+          <span key={u.id} className="badge" style={highlight === u.id ? { outline: '2px solid var(--accent)' } : undefined}>
+            {u.name} · {counts.get(u.id)}
+          </span>
+        ))}
+      </div>
+      <div className="sched-wrap">
+        <table className="sched">
+          <thead>
+            <tr>
+              <th>Weekend</th>
+              <th>Hours</th>
+              {services.map((s) => (
+                <th key={s.id}>
+                  <span className="svc-dot" style={{ background: s.color }} />
+                  {s.name}
+                </th>
+              ))}
+              <th>Away / requests</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fridays.map((fri) => {
+              const shifts = services.map((s) => shiftById.get(`${s.id}:weekend:${fri}`));
+              const any = shifts.find(Boolean)!;
+              const away = awayLabels(any);
+              return (
+                <tr key={fri} className={any.holiday ? 'holiday' : ''}>
+                  <td className="date">
+                    {dayLabel(fri)} {any.holiday && <span title="Includes a holiday">★</span>}
+                  </td>
+                  <td className="small muted">
+                    {dayLabel(any.start)} {timeLabel(any.start)} – {dayLabel(any.end)} {timeLabel(any.end)}
+                  </td>
+                  {shifts.map((s, i) => <td key={services[i].id}>{cell(s, '—')}</td>)}
+                  <td className="small" style={{ whiteSpace: 'normal' }}>
+                    {away.length ? away.map((a, i) => (
+                      <span key={i} className={a.strong ? '' : 'muted'}>{i > 0 && ', '}{a.text}</span>
+                    )) : <span className="muted">—</span>}
+                  </td>
                 </tr>
               );
             })}
