@@ -5,7 +5,8 @@
   --border: #dde1e7;
   --text: #17202e;
   --muted: #5d6878;
-  --accent: #1d4ed8;
+  /* Brand: cherry red from the logo */
+  --accent: #90021e;
   --accent-text: #ffffff;
   --ok: #047857;
   --ok-bg: #e7f6ef;
@@ -13,7 +14,7 @@
   --warn-bg: #fdf3e2;
   --bad: #b91c1c;
   --bad-bg: #fdecec;
-  --weekend-bg: #eef2ff;
+  --weekend-bg: #fbf1f3;
   --radius: 8px;
   color-scheme: light;
   font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -29,15 +30,15 @@
     --border: #2c3542;
     --text: #e6eaf0;
     --muted: #96a1b2;
-    --accent: #6d95ff;
-    --accent-text: #0b1020;
+    --accent: #f07a8c;
+    --accent-text: #2a0009;
     --ok: #4ade80;
     --ok-bg: #12291e;
     --warn: #fbbf24;
     --warn-bg: #2d2412;
     --bad: #f87171;
     --bad-bg: #2f1616;
-    --weekend-bg: #1b2140;
+    --weekend-bg: #1f191c;
     color-scheme: dark;
   }
 }
@@ -52,7 +53,9 @@ h2 { font-size: 16px; margin: 0 0 12px; }
 
 .shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
 .sidebar { background: var(--surface); border-right: 1px solid var(--border); padding: 20px 12px; display: flex; flex-direction: column; gap: 4px; }
-.brand { font-weight: 700; font-size: 16px; padding: 0 10px 16px; }
+.brand { font-weight: 700; font-size: 16px; padding: 0 10px 16px; display: flex; align-items: center; gap: 10px; }
+.brand img { width: 32px; height: 32px; border-radius: 6px; }
+.login-logo { width: 64px; height: 64px; border-radius: 12px; }
 .sidebar a { padding: 8px 10px; border-radius: 6px; color: var(--text); }
 .sidebar a.active { background: var(--surface-2); color: var(--accent); font-weight: 600; }
 .sidebar .spacer { flex: 1; }

@@ -1,6 +1,6 @@
 import { Redirect } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, ErrorText } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
@@ -34,6 +34,9 @@ export default function LoginScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.wrap}>
         <View style={{ gap: 6, marginBottom: 24 }}>
+          <View style={styles.logo}>
+            <Image source={require('@/assets/images/logo-mark.png')} style={{ width: 52, height: 52 }} resizeMode="contain" />
+          </View>
           <Text style={[styles.title, { color: t.text }]}>Call Planner</Text>
           <Text style={{ color: t.muted, fontSize: 16 }}>See your call schedule and send requests.</Text>
         </View>
@@ -72,5 +75,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   wrap: { flex: 1, justifyContent: 'center', padding: 24, gap: 12 },
   title: { fontSize: 34, fontWeight: '700' },
+  // Brand tile: the white mark on the logo's cherry red, in both themes.
+  logo: { width: 72, height: 72, borderRadius: 16, backgroundColor: '#90021e', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   input: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 16 },
 });

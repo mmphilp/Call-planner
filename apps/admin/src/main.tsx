@@ -44,7 +44,10 @@ function App() {
     <BrowserRouter>
       <div className="shell">
         <nav className="sidebar">
-          <div className="brand">Call Planner</div>
+          <div className="brand">
+            <img src="/logo.png" alt="" />
+            Call Planner
+          </div>
           <NavLink to="/periods">Schedules</NavLink>
           <NavLink to="/routine">Weekday call</NavLink>
           {isSuper && <NavLink to="/people">Surgeons</NavLink>}
