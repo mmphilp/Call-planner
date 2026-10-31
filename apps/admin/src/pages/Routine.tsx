@@ -32,7 +32,10 @@ export function RoutinePage() {
   );
   const current = new Map(data.routine.map((r) => [`${r.serviceId}|${r.kind}|${r.weekday}`, r.userId]));
 
-  const saveSettings = async (serviceId: string, settings: { weekdayMode?: 'shift' | 'week'; weekdayRules?: boolean }) => {
+  const saveSettings = async (
+    serviceId: string,
+    settings: { weekdayMode?: 'shift' | 'week'; weekdayRules?: boolean; backupServiceId?: string | null },
+  ) => {
     setMsg(null);
     try {
       const updated = await put<Schedule['services'][number]>('/api/routine/settings', { serviceId, ...settings });
@@ -101,6 +104,18 @@ export function RoutinePage() {
                   <span><b>Day by day</b> <span className="muted small">— with routine days below</span></span>
                 </label>
               </div>
+              <label className="row small" style={{ marginBottom: 10 }}>
+                <span>When nobody on the team is available, covered by</span>
+                <select
+                  value={s.backupServiceId ?? ''}
+                  onChange={(e) => saveSettings(s.id, { backupServiceId: e.target.value || null })}
+                >
+                  <option value="">Nobody (leave open)</option>
+                  {data.services
+                    .filter((o) => o.id !== s.id && (o.coversWeekdayDay || o.coversWeekdayNight))
+                    .map((o) => <option key={o.id} value={o.id}>{o.name}’s on-call surgeon</option>)}
+                </select>
+              </label>
               {s.weekdayMode === 'week' ? (
                 <p className="small muted">
                   Each week goes to a surgeon who is free all week, alternating and shared fairly by FTE

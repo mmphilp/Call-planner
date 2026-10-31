@@ -185,6 +185,34 @@ describe('week-long teams', () => {
   }, 30_000);
 });
 
+describe('cross-cover', () => {
+  it('fills a one-person team’s gaps from the covering service and follows changes', async () => {
+    await call(adminToken, 'POST', '/api/services', { name: 'Endo', coversWeekdayDay: true, coversWeekdayNight: false, coversWeekend: false });
+    const kuo = (await call(adminToken, 'POST', '/api/users', { email: 'kuo@x.org', name: 'Kuo', password: 'password123', serviceIds: ['endo'] })).body;
+    await call(adminToken, 'PUT', '/api/routine/settings', { serviceId: 'endo', weekdayMode: 'week', backupServiceId: 'general' });
+    const { body: p } = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2 });
+    await call(adminToken, 'POST', '/api/requests', { periodId: p.id, userId: kuo.id, type: 'unavailable', startDate: '2027-08-09', endDate: '2027-08-20' });
+
+    const opt = await call(adminToken, 'POST', `/api/periods/${p.id}/optimize`, { seed: 1 });
+    expect(opt.body.unassignedShiftIds).toEqual([]);
+    expect(opt.body.violations).toEqual([]);
+    expect(opt.body.coverCount).toBe(10);
+
+    const owner = async () => new Map((await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`)).body.assignments.map((a: any) => [a.shiftId, a]));
+    let who = await owner();
+    expect((who.get('endo:day:2027-08-12') as any).source).toBe('backup');
+    expect((who.get('endo:day:2027-08-12') as any).userId).toBe((who.get('general:day:2027-08-12') as any).userId);
+    expect((who.get('endo:day:2027-08-23') as any).userId).toBe(kuo.id);
+
+    // Swap the covering service's surgeon that day: the cover moves with them.
+    const users = (await call(adminToken, 'GET', '/api/users')).body;
+    const other = users.find((u: any) => u.serviceIds.includes('general') && u.id !== (who.get('general:day:2027-08-12') as any).userId);
+    await call(adminToken, 'PUT', `/api/periods/${p.id}/assignments/general:day:2027-08-12`, { userId: other.id });
+    who = await owner();
+    expect((who.get('endo:day:2027-08-12') as any).userId).toBe(other.id);
+  }, 30_000);
+});
+
 describe('full scheduling workflow', () => {
   it('collects requests, optimizes, edits, publishes and shares the schedule', async () => {
     const created = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2, holidays: ['2027-09-06'] });

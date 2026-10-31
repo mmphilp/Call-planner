@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import {
   applyTeamRules,
+  backupMap,
+  coverFromBackup,
   dayOfWeek,
   DEFAULT_RULES,
   evaluateSchedule,
@@ -90,6 +92,27 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
       for (const s of shifts) upsert.run(s.id, p.id, s.serviceId, s.kind, s.date, s.start, s.end, s.holiday ? 1 : 0);
     });
     return shifts.length;
+  };
+
+  /**
+   * Re-apply cross-cover: unfilled weekday shifts of a team with a covering
+   * service go to whoever is on that service's matching shift. Run after
+   * anything that changes assignments, so cover follows the latest schedule.
+   */
+  const refreshCover = (periodId: string) => {
+    transaction(db, () => {
+      db.prepare(
+        "DELETE FROM assignments WHERE source = 'backup' AND shift_id IN (SELECT id FROM shifts WHERE period_id = ?)",
+      ).run(periodId);
+      const services = listServices(db);
+      if (!services.some((s) => s.backupServiceId)) return;
+      const ins = db.prepare(
+        "INSERT OR IGNORE INTO assignments (shift_id, user_id, locked, source) VALUES (?, ?, 0, 'backup')",
+      );
+      for (const a of coverFromBackup(poolShifts(db, periodId), listAssignments(db, periodId), services)) {
+        ins.run(a.shiftId, a.userId);
+      }
+    });
   };
 
   app.get('/api/rules/defaults', async () => DEFAULT_RULES);
@@ -184,6 +207,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
 
   const report = (p: Period) =>
     evaluateSchedule({
+      backups: backupMap(listServices(db)),
       shifts: applyTeamRules(poolShifts(db, p.id), listServices(db)),
       surgeons: callPool(db),
       requests: listRequests(db, { periodId: p.id }),
@@ -253,7 +277,8 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     const all = applyTeamRules(poolShifts(db, p.id), services);
     const requests = listRequests(db, { periodId: p.id });
     const seed = body.seed ?? Math.floor(Math.random() * 1e9);
-    const current = listAssignments(db, p.id).filter((a) => inPool.has(a.userId));
+    // Cross-cover is recomputed afterwards, so leave it out of the plan.
+    const current = listAssignments(db, p.id).filter((a) => inPool.has(a.userId) && a.source !== 'backup');
     const byShift = new Map(current.map((a) => [a.shiftId, a]));
     const shiftById = new Map(all.map((s) => [s.id, s]));
     const scoped = all.filter(inScope);
@@ -274,6 +299,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
       requests,
       rules: p.rules,
       locked: [...fixed.map((a) => ({ ...a, locked: true })), ...lockedInScope, ...weeks, ...routine],
+      backups: backupMap(services),
       seed,
     });
     // Week and routine picks are stored unlocked, so they're re-planned next time.
@@ -286,9 +312,12 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
         if (scopedIds.has(a.shiftId) && (!a.locked || routineIds.has(a.shiftId))) ins.run(a.shiftId, a.userId);
       }
     });
+    refreshCover(p.id);
+    const filled = new Set(listAssignments(db, p.id).map((a) => a.shiftId));
     return {
       ...report(p),
-      unassignedShiftIds: result.unassignedShiftIds.filter((id) => scopedIds.has(id)),
+      unassignedShiftIds: scoped.filter((s) => !filled.has(s.id)).map((s) => s.id),
+      coverCount: listAssignments(db, p.id).filter((a) => a.source === 'backup' && scopedIds.has(a.shiftId)).length,
       routineCount: routine.length,
       weekCount: new Set(
         weeks.map((a) => {
@@ -322,9 +351,10 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
       // A hand-picked assignment is locked by default so re-optimizing keeps it.
       db.prepare(
         `INSERT INTO assignments (shift_id, user_id, locked) VALUES (?, ?, ?)
-         ON CONFLICT (shift_id) DO UPDATE SET user_id = excluded.user_id, locked = excluded.locked`,
+         ON CONFLICT (shift_id) DO UPDATE SET user_id = excluded.user_id, locked = excluded.locked, source = NULL`,
       ).run(req.params.shiftId, body.userId, body.locked === false ? 0 : 1);
     }
+    refreshCover(p.id);
     return { ok: true };
   });
 
@@ -337,6 +367,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
       db.prepare('UPDATE shifts SET covered_by = ? WHERE id = ?').run(coveredBy, req.params.shiftId);
       if (coveredBy) db.prepare('DELETE FROM assignments WHERE shift_id = ?').run(req.params.shiftId);
     });
+    refreshCover(p.id);
     return { ok: true };
   });
 
@@ -348,6 +379,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     transaction(db, () => {
       for (const s of listShifts(db, p.id)) if (inScope(s)) del.run(s.id);
     });
+    refreshCover(p.id);
     return { ok: true };
   });
 

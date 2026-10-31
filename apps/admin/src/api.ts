@@ -52,7 +52,8 @@ export interface Schedule {
   services: (Service & { color: string; sort: number })[];
   /** coveredBy: covered from outside the call pool (e.g. a locum). */
   shifts: (Shift & { coveredBy?: string })[];
-  assignments: Assignment[];
+  /** source 'backup': filled automatically by the team's covering service. */
+  assignments: (Assignment & { source?: 'backup' })[];
   people: { id: string; name: string }[];
 }
 

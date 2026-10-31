@@ -37,6 +37,7 @@ Call scheduling for a surgical group: surgeons send requests from an iPhone/Andr
   * Weeks nobody can take whole are filled day by day.
   * Rest and nights-per-week limits don't apply to week-long call. Day-by-day teams can switch them off too, e.g. small teams on home call.
   * Fair share is worked out within each team, and weekends across everyone.
+* **Cross-cover.** A team can name a covering service. When nobody on the team is available for a weekday shift, whoever is on call for that service at the same time covers it too. Cross-cover is shown in italics and recalculated whenever the covering team's schedule changes. Manual picks and locums take priority.
 * **Routine days** (*Weekday call* page). Pick who always takes a given weekday's day or night shift, e.g. Mon/Wed days. When the schedule is optimized, routine days are filled first, except on holidays or when that surgeon has time off. They count toward fair share, and everything left on *Rotate* is shared out.
 * **Locums.** In any shift's dropdown, choose *Locum / outside cover…*. That shift is then left out of the optimizer and the fair-share math.
 * **Scope.** The overall admin can optimize *Everything*, *Weekends only*, or one team's weekdays.

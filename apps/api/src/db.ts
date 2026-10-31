@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS services (
   weekday_mode TEXT NOT NULL DEFAULT 'shift' CHECK (weekday_mode IN ('shift', 'week')),
   -- Apply rest / nights-per-week limits to this team's weekday call.
   weekday_rules INTEGER NOT NULL DEFAULT 1,
+  -- When the team can't cover a weekday shift, this service's on-call surgeon does.
+  backup_service_id TEXT REFERENCES services(id) ON DELETE SET NULL,
   sort INTEGER NOT NULL DEFAULT 0
 );
 
@@ -86,7 +88,9 @@ CREATE INDEX IF NOT EXISTS shifts_period ON shifts(period_id, start);
 CREATE TABLE IF NOT EXISTS assignments (
   shift_id TEXT PRIMARY KEY REFERENCES shifts(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id),
-  locked INTEGER NOT NULL DEFAULT 0
+  locked INTEGER NOT NULL DEFAULT 0,
+  -- 'backup': filled automatically by a covering service (recomputed on changes).
+  source TEXT
 );
 CREATE INDEX IF NOT EXISTS assignments_user ON assignments(user_id);
 
@@ -123,6 +127,9 @@ function migrate(db: Db) {
     db.exec(`ALTER TABLE services ADD COLUMN weekday_mode TEXT NOT NULL DEFAULT 'shift' CHECK (weekday_mode IN ('shift', 'week'))`);
   }
   if (!serviceCols.includes('weekday_rules')) db.exec('ALTER TABLE services ADD COLUMN weekday_rules INTEGER NOT NULL DEFAULT 1');
+  if (!serviceCols.includes('backup_service_id')) db.exec('ALTER TABLE services ADD COLUMN backup_service_id TEXT');
+  const assignmentCols = (db.prepare('PRAGMA table_info(assignments)').all() as { name: string }[]).map((c) => c.name);
+  if (!assignmentCols.includes('source')) db.exec('ALTER TABLE assignments ADD COLUMN source TEXT');
 }
 
 export function transaction<T>(db: Db, fn: () => T): T {

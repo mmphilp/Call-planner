@@ -15,6 +15,7 @@ interface OptimizeSummary {
   unassignedShiftIds: string[];
   routineCount: number;
   weekCount?: number;
+  coverCount?: number;
   violations: unknown[];
   requestOutcomes: { honored: boolean }[];
 }
@@ -147,7 +148,9 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
       if (rs.some((r) => r.type === 'prefer_on')) return ' — wants this';
       return '';
     };
-    const classes = ['cell', shift.kind === 'weekend' && 'weekend', issues && 'violation', !a && 'empty'].filter(Boolean).join(' ');
+    const classes = ['cell', shift.kind === 'weekend' && 'weekend', issues && 'violation', !a && 'empty', a?.source === 'backup' && 'cover']
+      .filter(Boolean)
+      .join(' ');
     return (
       <div className={classes} title={issues?.join('\n') ?? (shift.kind === 'weekend' ? `${shift.start} → ${shift.end}` : undefined)}>
         <select
@@ -162,7 +165,9 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
           }}
         >
           <option value="">{shift.kind === 'weekend' ? '— weekend —' : '—'}</option>
-          {a && !eligible.some((u) => u.id === a.userId) && <option value={a.userId}>{nameOf.get(a.userId)} (not eligible)</option>}
+          {a && !eligible.some((u) => u.id === a.userId) && (
+            <option value={a.userId}>{nameOf.get(a.userId)} {a.source === 'backup' ? '(cross-cover)' : '(not eligible)'}</option>
+          )}
           {eligible.map((u) => <option key={u.id} value={u.id}>{u.name}{flag(u.id)}</option>)}
           <option value={LOCUM}>Locum / outside cover…</option>
         </select>
@@ -219,6 +224,7 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
             {locumCount > 0 && ` (plus ${locumCount} covered by locums)`},{' '}
             {summary.requestOutcomes.filter((o) => o.honored).length} of {summary.requestOutcomes.length} requests honored
             {!!summary.weekCount && `, ${summary.weekCount} team-weeks given to one surgeon`}
+            {!!summary.coverCount && `, ${summary.coverCount} shifts cross-covered by another team`}
             {summary.routineCount > 0 && `, ${summary.routineCount} routine days applied`}.
             {summary.unassignedShiftIds.length > 0 && ' Some shifts could not be filled without breaking a rule. Fill them by hand or relax a rule.'}
           </div>

@@ -19,6 +19,8 @@ export interface OptimizeInput {
   locked?: Assignment[];
   seed?: number;
   iterations?: number;
+  /** serviceId → service that covers it when the team is away (see coverFromBackup). */
+  backups?: Record<string, string>;
 }
 
 export interface SurgeonStats {
@@ -97,8 +99,11 @@ class Model {
   targets = new Map<string, Record<ShiftKind, number>>();
   holidayTargets = new Map<string, number>();
 
+  backups: Record<string, string>;
+
   constructor(input: OptimizeInput) {
     this.rules = mergeRules(input.rules);
+    this.backups = input.backups ?? {};
     this.surgeons = input.surgeons;
     for (const s of input.surgeons) this.surgeonById.set(s.id, s);
     this.info = [...input.shifts]
@@ -164,6 +169,18 @@ class Model {
     }
   }
 
+  /**
+   * The same person on two services' identical shifts because of cross-cover:
+   * one service backs up the other, or both are covered by the same service
+   * (e.g. two one-person teams away on the same day).
+   */
+  isCrossCover(a: Shift, b: Shift): boolean {
+    if (a.start !== b.start || a.end !== b.end || a.serviceId === b.serviceId) return false;
+    const ba = this.backups[a.serviceId];
+    const bb = this.backups[b.serviceId];
+    return ba === b.serviceId || bb === a.serviceId || (!!ba && ba === bb);
+  }
+
   /** Hard-rule violations within one surgeon's sorted shift list. */
   hardViolations(list: number[]): Violation[] {
     const out: Violation[] = [];
@@ -171,6 +188,7 @@ class Model {
     for (let i = 1; i < list.length; i++) {
       const prev = this.info[list[i - 1]];
       const cur = this.info[list[i]];
+      if (this.isCrossCover(prev.shift, cur.shift)) continue;
       const gapHours = (cur.startMin - prev.endMin) / 60;
       // Teams that work in weeks (or opt out) don't apply rest rules to their weekday call.
       const relaxed = prev.shift.relaxed || cur.shift.relaxed;
@@ -186,8 +204,12 @@ class Model {
       }
     }
     const nights = new Map<string, number[]>();
+    const nightStarts = new Set<number>();
     for (const i of list) {
       if (this.info[i].shift.kind !== 'night' || this.info[i].shift.relaxed) continue;
+      // Covering another service the same night is still one night.
+      if (nightStarts.has(this.info[i].startMin)) continue;
+      nightStarts.add(this.info[i].startMin);
       const wk = this.info[i].week;
       nights.set(wk, [...(nights.get(wk) ?? []), i]);
     }
@@ -242,7 +264,7 @@ class Model {
       // norm, so it costs nothing. Running from that into a weekend only gets
       // the light spacing cost: enough to pick who takes a weekend, never
       // enough to unbalance weekends for a one-person team that can't avoid it.
-      if (prev.shift.relaxed && cur.shift.relaxed) continue;
+      if ((prev.shift.relaxed && cur.shift.relaxed) || this.isCrossCover(prev.shift, cur.shift)) continue;
       const days = (cur.startMin - prev.startMin) / 1440;
       if (days < r.preferredSpacingDays) {
         cost += r.weights.spacing * (r.preferredSpacingDays - days);
@@ -497,7 +519,8 @@ function analyze(m: Model, requests: CallRequest[], assignments: Assignment[]) {
     const surgeon = m.surgeonById.get(u);
     if (!surgeon) return;
     lists.get(u)!.push(i);
-    if (!surgeon.serviceIds.includes(shift.serviceId)) {
+    const backup = m.backups[shift.serviceId];
+    if (!surgeon.serviceIds.includes(shift.serviceId) && !(backup && shift.kind !== 'weekend' && surgeon.serviceIds.includes(backup))) {
       violations.push({
         type: 'ineligible',
         shiftIds: [shift.id],

@@ -124,7 +124,9 @@ export function callPool(db: Db): Surgeon[] {
     .map((u) => ({ id: u.id, name: u.name, fte: u.fte, serviceIds: u.serviceIds }));
 }
 
-export function toService(r: Row): Service & { sort: number; weekdayMode: 'shift' | 'week'; weekdayRules: boolean } {
+export function toService(
+  r: Row,
+): Service & { sort: number; weekdayMode: 'shift' | 'week'; weekdayRules: boolean; backupServiceId: string | null } {
   return {
     id: r.id,
     name: r.name,
@@ -134,6 +136,7 @@ export function toService(r: Row): Service & { sort: number; weekdayMode: 'shift
     coversWeekend: !!r.covers_weekend,
     weekdayMode: r.weekday_mode === 'week' ? 'week' : 'shift',
     weekdayRules: !!r.weekday_rules,
+    backupServiceId: r.backup_service_id ?? null,
     sort: r.sort,
   };
 }
@@ -192,7 +195,9 @@ export function poolShifts(db: Db, periodId: string): Shift[] {
     .map(({ coveredBy: _, ...s }) => s);
 }
 
-export function listAssignments(db: Db, periodId: string): Assignment[] {
+export type StoredAssignment = Assignment & { source?: 'backup' };
+
+export function listAssignments(db: Db, periodId: string): StoredAssignment[] {
   return (
     db
       .prepare(
@@ -200,7 +205,12 @@ export function listAssignments(db: Db, periodId: string): Assignment[] {
          WHERE s.period_id = ? ORDER BY s.start`,
       )
       .all(periodId) as Row[]
-  ).map((r) => ({ shiftId: r.shift_id, userId: r.user_id, locked: !!r.locked }));
+  ).map((r) => ({
+    shiftId: r.shift_id,
+    userId: r.user_id,
+    locked: !!r.locked,
+    ...(r.source === 'backup' ? { source: 'backup' as const } : {}),
+  }));
 }
 
 function toRequest(r: Row): RequestRow {

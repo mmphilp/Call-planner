@@ -22,6 +22,11 @@ export interface Service {
   weekdayMode?: 'shift' | 'week';
   /** Apply rest / nights-per-week limits to this team's weekday call (default true; never in week mode). */
   weekdayRules?: boolean;
+  /**
+   * When nobody on this team can take a weekday shift, whoever is on call for
+   * this other service at the same time covers it too.
+   */
+  backupServiceId?: string | null;
 }
 
 export interface Shift {

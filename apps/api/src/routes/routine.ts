@@ -22,11 +22,19 @@ export function routineRoutes(app: FastifyInstance, db: Db) {
         serviceId: z.string(),
         weekdayMode: z.enum(['shift', 'week']).optional(),
         weekdayRules: z.boolean().optional(),
+        backupServiceId: z.string().nullable().optional(),
       }),
       req.body,
     );
     if (!canEditService(me(req), body.serviceId)) throw httpError(403, 'You can only change your own team');
     if (body.weekdayMode) db.prepare('UPDATE services SET weekday_mode = ? WHERE id = ?').run(body.weekdayMode, body.serviceId);
+    if (body.backupServiceId !== undefined) {
+      if (body.backupServiceId === body.serviceId) throw httpError(400, 'A team cannot cover itself');
+      if (body.backupServiceId && !db.prepare('SELECT 1 FROM services WHERE id = ?').get(body.backupServiceId)) {
+        throw httpError(400, 'Unknown service');
+      }
+      db.prepare('UPDATE services SET backup_service_id = ? WHERE id = ?').run(body.backupServiceId, body.serviceId);
+    }
     if (body.weekdayRules !== undefined) {
       db.prepare('UPDATE services SET weekday_rules = ? WHERE id = ?').run(body.weekdayRules ? 1 : 0, body.serviceId);
     }

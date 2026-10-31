@@ -117,6 +117,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .sched .cell.weekend select { background: var(--weekend-bg); }
 .sched .cell.violation select { border-color: var(--bad); box-shadow: 0 0 0 1px var(--bad); }
 .sched .cell.empty select { border-style: dashed; }
+.sched .cell.cover select { font-style: italic; border-style: dotted; }
 .sched .cell.locum .badge { background: var(--warn-bg); color: var(--warn); }
 .lock { border: none; background: none; padding: 2px; font-size: 13px; opacity: 0.35; }
 .lock.on { opacity: 1; }

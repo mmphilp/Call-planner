@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyTeamRules,
+  backupMap,
+  coverFromBackup,
   evaluateSchedule,
   generateShifts,
   halfYearRange,
@@ -290,5 +292,34 @@ describe('small teams', () => {
     // Weekends are still shared by everyone.
     const weekends = result.stats.map((s) => s.counts.weekend);
     expect(Math.max(...weekends) - Math.min(...weekends)).toBeLessThanOrEqual(1);
+  }, 30_000);
+});
+
+describe('cross-cover between teams', () => {
+  it('gives a one-person team’s gaps to the covering service’s on-call surgeon without breaking rules', () => {
+    const { start, end } = halfYearRange(2027, 1);
+    const crs: Service = { id: 'crs', name: 'Colorectal', coversWeekdayDay: true, coversWeekdayNight: true, coversWeekend: false, weekdayMode: 'week' };
+    const endo: Service = { id: 'endo', name: 'Endocrine', coversWeekdayDay: true, coversWeekdayNight: true, coversWeekend: false, weekdayMode: 'week', backupServiceId: 'crs' };
+    const services = [crs, endo];
+    const team: Surgeon[] = [
+      { id: 'philp', name: 'P', fte: 1, serviceIds: ['crs'] },
+      { id: 'goda', name: 'G', fte: 1, serviceIds: ['crs'] },
+      { id: 'kuo', name: 'K', fte: 1, serviceIds: ['endo'] },
+    ];
+    const shifts = applyTeamRules(generateShifts({ start, end, services }), services);
+    const requests: CallRequest[] = [
+      { id: 'away', userId: 'kuo', type: 'unavailable', status: 'approved', startDate: '2027-03-01', endDate: '2027-03-12' },
+    ];
+    const weeks = planWeeks({ shifts, surgeons: team, requests, services, seed: 1 });
+    const first = optimizeSchedule({ shifts, surgeons: team, requests, locked: weeks, seed: 1 });
+    const covered = coverFromBackup(shifts, first.assignments, services);
+    expect(covered.length).toBe(first.unassignedShiftIds.length);
+    const all = [...first.assignments, ...covered];
+    const who = new Map(all.map((a) => [a.shiftId, a.userId]));
+    for (const s of shifts.filter((x) => x.serviceId === 'endo' && x.date >= '2027-03-01' && x.date <= '2027-03-12')) {
+      expect(who.get(s.id)).toBe(who.get(s.id.replace('endo:', 'crs:')));
+    }
+    const report = evaluateSchedule({ shifts, surgeons: team, requests, assignments: all, backups: backupMap(services) });
+    expect(report.violations).toEqual([]);
   }, 30_000);
 });
