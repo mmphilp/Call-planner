@@ -19,6 +19,7 @@ import {
   listRequests,
   listServices,
   listShifts,
+  poolShifts,
   listUsers,
   type Period,
 } from '../repo';
@@ -171,7 +172,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
 
   const report = (p: Period) =>
     evaluateSchedule({
-      shifts: listShifts(db, p.id),
+      shifts: poolShifts(db, p.id),
       surgeons: callPool(db),
       requests: listRequests(db, { periodId: p.id }),
       rules: p.rules,
@@ -190,7 +191,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     const inPool = new Set(pool.map((u) => u.id));
     const locked = listAssignments(db, p.id).filter((a) => a.locked && inPool.has(a.userId));
     const result = optimizeSchedule({
-      shifts: listShifts(db, p.id),
+      shifts: poolShifts(db, p.id),
       surgeons: pool,
       requests: listRequests(db, { periodId: p.id }),
       rules: p.rules,
@@ -225,6 +226,19 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     return { ok: true };
   });
 
+  /** Mark a shift as covered from outside the call pool (e.g. a locum), or clear it. */
+  app.put<{ Params: { id: string; shiftId: string } }>('/api/periods/:id/shifts/:shiftId/cover', async (req) => {
+    const p = editablePeriod(req, req.params.id);
+    const { coveredBy } = parse(z.object({ coveredBy: z.string().trim().min(1).max(100).nullable() }), req.body);
+    const shift = db.prepare('SELECT id FROM shifts WHERE id = ? AND period_id = ?').get(req.params.shiftId, p.id);
+    if (!shift) throw httpError(404, 'Shift not found');
+    transaction(db, () => {
+      db.prepare('UPDATE shifts SET covered_by = ? WHERE id = ?').run(coveredBy, req.params.shiftId);
+      if (coveredBy) db.prepare('DELETE FROM assignments WHERE shift_id = ?').run(req.params.shiftId);
+    });
+    return { ok: true };
+  });
+
   app.post<{ Params: { id: string } }>('/api/periods/:id/assignments/clear', async (req) => {
     const p = editablePeriod(req, req.params.id);
     const { includeLocked } = parse(z.object({ includeLocked: z.boolean().default(false) }), req.body);
@@ -245,7 +259,8 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     const rows = [['Date', 'Service', 'Shift', 'Start', 'End', 'Surgeon']];
     for (const s of listShifts(db, p.id)) {
       const u = owner.get(s.id);
-      rows.push([s.date, services.get(s.serviceId) ?? s.serviceId, label[s.kind], s.start, s.end, u ? names.get(u) ?? '' : '']);
+      const who = s.coveredBy ? `${s.coveredBy} (locum)` : u ? names.get(u) ?? '' : '';
+      rows.push([s.date, services.get(s.serviceId) ?? s.serviceId, label[s.kind], s.start, s.end, who]);
     }
     const csv = rows.map((r) => r.map((c) => `"${c.replaceAll('"', '""')}"`).join(',')).join('\n');
     reply

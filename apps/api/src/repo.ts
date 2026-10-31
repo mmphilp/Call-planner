@@ -135,7 +135,10 @@ export function listPeriods(db: Db): Period[] {
   return (db.prepare('SELECT * FROM periods ORDER BY year DESC, half DESC').all() as Row[]).map(toPeriod);
 }
 
-export function listShifts(db: Db, periodId: string): Shift[] {
+/** A shift plus who covers it from outside the call pool, if anyone. */
+export type ScheduledShift = Shift & { coveredBy?: string };
+
+export function listShifts(db: Db, periodId: string): ScheduledShift[] {
   return (db.prepare('SELECT * FROM shifts WHERE period_id = ? ORDER BY start').all(periodId) as Row[]).map(
     (r) => ({
       id: r.id,
@@ -145,8 +148,16 @@ export function listShifts(db: Db, periodId: string): Shift[] {
       start: r.start,
       end: r.end,
       holiday: r.holiday ? true : undefined,
+      coveredBy: r.covered_by ?? undefined,
     }),
   );
+}
+
+/** Shifts the call pool must fill: everything not covered by a locum. */
+export function poolShifts(db: Db, periodId: string): Shift[] {
+  return listShifts(db, periodId)
+    .filter((s) => !s.coveredBy)
+    .map(({ coveredBy: _, ...s }) => s);
 }
 
 export function listAssignments(db: Db, periodId: string): Assignment[] {

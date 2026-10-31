@@ -44,6 +44,8 @@ export interface Shift {
   start: string;
   end: string;
   holiday?: boolean;
+  /** Covered from outside the group (e.g. a locum). */
+  coveredBy?: string;
 }
 
 export interface Schedule {

@@ -3,6 +3,10 @@ import { useMemo, useState } from 'react';
 import { post, put, type RequestRow } from '../api';
 import type { PeriodData } from './Period';
 
+const LOCUM = '__locum__';
+
+type ScheduledShift = PeriodData['schedule']['shifts'][number];
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -27,6 +31,7 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<OptimizeSummary | null>(null);
+  const poolCount = schedule.shifts.filter((s) => !s.coveredBy).length;
   const hasWeekday = schedule.shifts.some((s) => s.kind !== 'weekend');
   const hasWeekend = schedule.shifts.some((s) => s.kind === 'weekend');
   const [view, setView] = useState<'weekdays' | 'weekends'>(hasWeekday ? 'weekdays' : 'weekends');
@@ -75,8 +80,28 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
     }
   };
 
-  const cell = (shift: Shift | undefined, absorbedLabel: string) => {
+  const setCover = async (shiftId: string, coveredBy: string | null) => {
+    setError(null);
+    try {
+      await put(`/api/periods/${p.id}/shifts/${encodeURIComponent(shiftId)}/cover`, { coveredBy });
+      reload();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const cell = (shift: ScheduledShift | undefined, absorbedLabel: string) => {
     if (!shift) return <span className="muted small">{absorbedLabel}</span>;
+    if (shift.coveredBy) {
+      return (
+        <div className="cell locum" title="Covered from outside the call pool; the optimizer skips this shift">
+          <span className="badge">{/locum/i.test(shift.coveredBy) ? shift.coveredBy : `Locum: ${shift.coveredBy}`}</span>
+          {editable && (
+            <button className="link" title="Remove locum cover" onClick={() => setCover(shift.id, null)}>×</button>
+          )}
+        </div>
+      );
+    }
     const a = owner.get(shift.id);
     const issues = problems.get(shift.id);
     const eligible = pool.filter((u) => u.serviceIds.includes(shift.serviceId));
@@ -94,11 +119,17 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
           value={a?.userId ?? ''}
           disabled={!editable}
           style={highlight && a?.userId === highlight ? { fontWeight: 700, outline: '2px solid var(--accent)' } : undefined}
-          onChange={(e) => assign(shift.id, e.target.value || null)}
+          onChange={(e) => {
+            if (e.target.value !== LOCUM) return assign(shift.id, e.target.value || null);
+            const who = prompt('Who is covering this shift? (e.g. locum’s name)', 'Locum');
+            if (who?.trim()) setCover(shift.id, who.trim());
+            else e.target.value = a?.userId ?? '';
+          }}
         >
           <option value="">{shift.kind === 'weekend' ? '— weekend —' : '—'}</option>
           {a && !eligible.some((u) => u.id === a.userId) && <option value={a.userId}>{nameOf.get(a.userId)} (not eligible)</option>}
           {eligible.map((u) => <option key={u.id} value={u.id}>{u.name}{flag(u.id)}</option>)}
+          <option value={LOCUM}>Locum / outside cover…</option>
         </select>
         {a && (
           <button
@@ -139,7 +170,8 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
         {!editable && <p className="muted small">This schedule is published. Unpublish it on the Overview tab to make changes.</p>}
         {summary && (
           <div className={`alert ${summary.unassignedShiftIds.length || summary.violations.length > summary.unassignedShiftIds.length ? 'error' : 'ok'}`} style={{ marginTop: 12, marginBottom: 0 }}>
-            Optimized: {schedule.shifts.length - summary.unassignedShiftIds.length} of {schedule.shifts.length} shifts filled,{' '}
+            Optimized: {poolCount - summary.unassignedShiftIds.length} of {poolCount} shifts filled
+            {poolCount < schedule.shifts.length && ` (plus ${schedule.shifts.length - poolCount} covered by locums)`},{' '}
             {summary.requestOutcomes.filter((o) => o.honored).length} of {summary.requestOutcomes.length} requests honored.
             {summary.unassignedShiftIds.length > 0 && ' Some shifts could not be filled without breaking a rule. Fill them by hand or relax a rule.'}
           </div>
@@ -241,8 +273,8 @@ function WeekendTable({
   highlight,
 }: {
   data: PeriodData;
-  cell: (shift: Shift | undefined, absorbedLabel: string) => React.ReactNode;
-  shiftById: Map<string, Shift>;
+  cell: (shift: ScheduledShift | undefined, absorbedLabel: string) => React.ReactNode;
+  shiftById: Map<string, ScheduledShift>;
   owner: Map<string, { userId: string }>;
   highlight: string;
 }) {

@@ -76,7 +76,8 @@ export default function ScheduleScreen() {
           <SectionHeader>On call now</SectionHeader>
           <Card style={{ gap: 10 }}>
             {onNow.map((s) => (
-              <ShiftLine key={s.id} label={`${services.get(s.serviceId)?.name} · ${KIND_LABEL[s.kind]}`} color={services.get(s.serviceId)?.color} person={people.get(owner.get(s.id) ?? '')} me={owner.get(s.id) === user?.id} />
+              <ShiftLine key={s.id} label={`${services.get(s.serviceId)?.name} · ${KIND_LABEL[s.kind]}`} color={services.get(s.serviceId)?.color} person={people.get(owner.get(s.id) ?? '')}
+                      locum={s.coveredBy} me={owner.get(s.id) === user?.id} />
             ))}
           </Card>
         </>
@@ -110,6 +111,7 @@ export default function ScheduleScreen() {
                       sub={shiftSpan(s)}
                       color={services.get(s.serviceId)?.color}
                       person={people.get(owner.get(s.id) ?? '')}
+                      locum={s.coveredBy}
                       me={owner.get(s.id) === user?.id}
                     />
                   ))}
@@ -128,12 +130,14 @@ function ShiftLine({
   sub,
   color,
   person,
+  locum,
   me,
 }: {
   label: string;
   sub?: string;
   color?: string;
   person?: { name: string; phone: string | null };
+  locum?: string;
   me: boolean;
 }) {
   const t = useTheme();
@@ -146,7 +150,7 @@ function ShiftLine({
           {sub ? ` · ${sub}` : ''}
         </T>
         <T bold style={me ? { color: t.accent } : undefined}>
-          {person ? person.name : 'Unassigned'}
+          {locum ? `${locum} (locum)` : person ? person.name : 'Unassigned'}
           {me ? ' (you)' : ''}
         </T>
       </View>

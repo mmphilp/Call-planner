@@ -81,6 +81,34 @@ describe('partial updates', () => {
   });
 });
 
+describe('locum cover', () => {
+  it('leaves locum weekends out of the optimizer and fair shares', async () => {
+    const { body: p } = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2 });
+    const { body: s8 } = await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`);
+    const weekendId = 'general:weekend:2027-07-02';
+    await call(adminToken, 'PUT', `/api/periods/${p.id}/assignments/${weekendId}`, { userId: s8.people[1].id });
+    const cover = await call(adminToken, 'PUT', `/api/periods/${p.id}/shifts/${weekendId}/cover`, { coveredBy: 'Dr. Locum' });
+    expect(cover.status).toBe(200);
+
+    const opt = await call(adminToken, 'POST', `/api/periods/${p.id}/optimize`, { seed: 1 });
+    expect(opt.body.unassignedShiftIds).toEqual([]);
+    expect(opt.body.violations).toEqual([]);
+    const weekendShare = opt.body.stats.reduce((t: number, s: any) => t + s.targets.weekend, 0);
+    const weekends = s8.shifts.filter((s: any) => s.kind === 'weekend').length;
+    expect(Math.round(weekendShare)).toBe(weekends - 1);
+
+    const after = await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`);
+    expect(after.body.shifts.find((s: any) => s.id === weekendId).coveredBy).toBe('Dr. Locum');
+    expect(after.body.assignments.find((a: any) => a.shiftId === weekendId)).toBeUndefined();
+    const csv = await call(adminToken, 'GET', `/api/periods/${p.id}/export.csv`);
+    expect(csv.body).toContain('"Dr. Locum (locum)"');
+
+    await call(adminToken, 'PUT', `/api/periods/${p.id}/shifts/${weekendId}/cover`, { coveredBy: null });
+    const report = await call(adminToken, 'GET', `/api/periods/${p.id}/report`);
+    expect(report.body.violations.map((v: any) => v.shiftIds[0])).toEqual([weekendId]);
+  }, 30_000);
+});
+
 describe('full scheduling workflow', () => {
   it('collects requests, optimizes, edits, publishes and shares the schedule', async () => {
     const created = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2, holidays: ['2027-09-06'] });

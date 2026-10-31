@@ -104,7 +104,7 @@ function Overview({ data, reload, goTo }: { data: PeriodData; reload: () => void
   const [holiday, setHoliday] = useState('');
   const idx = STEPS.findIndex((s) => s.status === p.status);
   const assigned = data.schedule.assignments.length;
-  const total = data.schedule.shifts.length;
+  const total = data.schedule.shifts.filter((s) => !s.coveredBy).length;
   const pending = data.requests.filter((r) => r.status === 'pending').length;
   const ruleBreaks = data.report.violations.filter((v) => v.type !== 'unassigned').length;
 

@@ -48,7 +48,8 @@ export interface RequestRow extends CallRequest {
 export interface Schedule {
   period: Period;
   services: (Service & { color: string; sort: number })[];
-  shifts: Shift[];
+  /** coveredBy: covered from outside the call pool (e.g. a locum). */
+  shifts: (Shift & { coveredBy?: string })[];
   assignments: Assignment[];
   people: { id: string; name: string }[];
 }

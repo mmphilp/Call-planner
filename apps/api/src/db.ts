@@ -57,7 +57,9 @@ CREATE TABLE IF NOT EXISTS shifts (
   date TEXT NOT NULL,
   start TEXT NOT NULL,
   end TEXT NOT NULL,
-  holiday INTEGER NOT NULL DEFAULT 0
+  holiday INTEGER NOT NULL DEFAULT 0,
+  -- Set when someone outside the call pool (e.g. a locum) covers this shift.
+  covered_by TEXT
 );
 CREATE INDEX IF NOT EXISTS shifts_period ON shifts(period_id, start);
 
@@ -88,7 +90,14 @@ CREATE INDEX IF NOT EXISTS requests_period ON requests(period_id, user_id);
 export function openDb(path: string): Db {
   const db = new DatabaseSync(path);
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+/** Bring databases created by older versions up to the current schema. */
+function migrate(db: Db) {
+  const shiftCols = (db.prepare('PRAGMA table_info(shifts)').all() as { name: string }[]).map((c) => c.name);
+  if (!shiftCols.includes('covered_by')) db.exec('ALTER TABLE shifts ADD COLUMN covered_by TEXT');
 }
 
 export function transaction<T>(db: Db, fn: () => T): T {
