@@ -2,6 +2,7 @@ import { Redirect } from 'expo-router';
 import { NativeTabs } from 'expo-router/native-tabs';
 import { ActivityIndicator, View } from 'react-native';
 import { useAuth } from '@/lib/auth';
+import '@/lib/web-styles';
 import { useTheme } from '@/lib/theme';
 
 export default function TabsLayout() {

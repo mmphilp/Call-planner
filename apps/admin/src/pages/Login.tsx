@@ -25,7 +25,7 @@ export function Login({ onSignedIn }: { onSignedIn: (u: User) => void }) {
   return (
     <div className="login">
       <form className="card" onSubmit={submit}>
-        <img className="login-logo" src="/logo.png" alt="" />
+        <img className="login-logo" src={`${import.meta.env.BASE_URL}logo.png`} alt="" />
         <div>
           <h1>Call Planner</h1>
           <p className="muted">Admin console</p>

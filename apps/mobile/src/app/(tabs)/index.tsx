@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
 import { Pressable, View } from 'react-native';
+import { AdminCard } from '@/components/AdminCard';
 import { Badge, Card, Empty, ErrorText, Screen, SectionHeader, T, useApi } from '@/components/ui';
 import { api, type MyShift } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -28,6 +29,7 @@ export default function MyCallScreen() {
       onRefresh={refresh}
     >
       <ErrorText message={error} />
+      <AdminCard />
       {data && !shifts.length && (
         <Empty title="No upcoming call" body="Your shifts appear here once the scheduler publishes the schedule." />
       )}

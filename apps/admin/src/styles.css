@@ -148,9 +148,11 @@ dialog::backdrop { background: rgb(0 0 0 / 0.4); }
 .form-grid .full { grid-column: 1 / -1; }
 
 @media (max-width: 760px) {
-  .shell { grid-template-columns: 1fr; }
-  .sidebar { flex-direction: row; overflow-x: auto; padding: 8px; border-right: none; border-bottom: 1px solid var(--border); }
-  .brand { display: none; }
+  .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .sidebar { flex-direction: row; align-items: center; overflow-x: auto; padding: 8px; border-right: none; border-bottom: 1px solid var(--border); }
+  .sidebar > * { white-space: nowrap; flex-shrink: 0; }
+  .sidebar .spacer { flex: 1 0 8px; }
+  .sidebar .who, .brand { display: none; }
   .main { padding: 16px; }
 }
 

@@ -33,7 +33,7 @@ export interface AppOptions {
   logger?: boolean;
   /** Built admin console (apps/admin/dist) to serve from the same origin. */
   adminDir?: string;
-  /** Web build of the surgeon app (apps/mobile web export), served under /app/. */
+  /** Web build of the app (apps/mobile web export), served at the site root. */
   appDir?: string;
   /** Set when running behind a reverse proxy or tunnel, so client IPs are real. */
   trustProxy?: boolean;
@@ -75,17 +75,23 @@ export async function buildApp(opts: AppOptions) {
   const hasBuild = (dir?: string): dir is string => !!dir && existsSync(resolve(dir, 'index.html'));
   const appDir = hasBuild(opts.appDir) ? resolve(opts.appDir) : null;
   const adminDir = hasBuild(opts.adminDir) ? resolve(opts.adminDir) : null;
-  if (appDir) {
-    await app.register(fastifyStatic, { root: appDir, prefix: '/app/', decorateReply: !adminDir });
-    app.get('/app', { config: { public: true } }, (_req, reply) => reply.redirect('/app/'));
+  // One address for everyone: the app at /, the admin tools under /admin/.
+  if (adminDir) {
+    await app.register(fastifyStatic, { root: adminDir, prefix: '/admin/' });
+    app.get('/admin', { config: { public: true } }, (_req, reply) => reply.redirect('/admin/'));
   }
-  if (adminDir) await app.register(fastifyStatic, { root: adminDir });
+  if (appDir) {
+    await app.register(fastifyStatic, { root: appDir, prefix: '/', decorateReply: !adminDir, wildcard: true });
+    // Old links and home-screen icons pointed at /app.
+    app.get('/app', { config: { public: true } }, (_req, reply) => reply.redirect('/'));
+    app.get('/app/*', { config: { public: true } }, (_req, reply) => reply.redirect('/'));
+  }
   if (appDir || adminDir) {
-    // Client-side routes (/periods/…, /app/requests) load the page's index.html.
+    // Client-side routes (/admin/periods/…, /requests) load their page's index.html.
     app.setNotFoundHandler((req, reply) => {
       if (req.method === 'GET' && !req.url.startsWith('/api/') && !req.url.startsWith('/cal/')) {
-        if (appDir && req.url.startsWith('/app/')) return reply.sendFile('index.html', appDir);
-        if (adminDir) return reply.sendFile('index.html', adminDir);
+        if (adminDir && req.url.startsWith('/admin')) return reply.sendFile('index.html', adminDir);
+        if (appDir) return reply.sendFile('index.html', appDir);
       }
       reply.code(404).send({ error: 'Not found' });
     });

@@ -14,8 +14,13 @@ export interface User {
   takesCall: boolean;
   phone: string | null;
   serviceIds: string[];
+  /** Services this surgeon runs weekday call for (team admin). */
+  adminServiceIds?: string[];
   calendarPath?: string;
 }
+
+/** Who gets the Admin tab: the overall admin, team admins and view-only accounts. */
+export const hasAdminAccess = (u: User) => u.role !== 'surgeon' || (u.adminServiceIds?.length ?? 0) > 0;
 
 export interface Period {
   id: string;

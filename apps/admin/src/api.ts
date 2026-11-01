@@ -129,7 +129,7 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
   });
   if (res.status === 401 && path !== '/api/auth/login') {
     auth.set(null);
-    location.href = '/';
+    location.href = import.meta.env.BASE_URL;
   }
   const data = res.headers.get('content-type')?.includes('json') ? await res.json() : await res.text();
   if (!res.ok) throw new Error((data as { error?: string })?.error ?? `Request failed (${res.status})`);

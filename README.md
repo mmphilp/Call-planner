@@ -78,7 +78,7 @@ Requires Node 22+.
 npm install                 # core, api, admin
 npm run seed                # demo data → apps/api/call-planner.db
 npm run dev:api             # API on http://localhost:4000
-npm run dev:admin           # admin console on http://localhost:5173
+npm run dev:admin           # admin console on http://localhost:5173/admin/
 ```
 
 Demo logins (password `password123`): `admin@example.com` (admin), `surgeon1@example.com` … `surgeon12@example.com`.
@@ -103,13 +103,13 @@ cd apps/mobile && npx tsc --noEmit
 
 ## Self-hosting (Docker)
 
-One container runs everything on one port:
+One container runs everything on one port, with **one address for everyone**: `http://<server>:4000/`.
 
-| URL | What |
-|---|---|
-| `http://<server>:4000/` | Admin console |
-| `http://<server>:4000/app` | Surgeon app (web version; on a phone or iPad use **Share → Add to Home Screen**) |
-| `http://<server>:4000/cal/…` | Each surgeon's calendar feed |
+* Everyone signs in there and gets the app (on a phone or iPad, use **Share → Add to Home Screen**).
+* The overall admin, team admins and view-only accounts also see an **Admin console** card on *My Call* and *Profile*. It opens the console already signed in, and the console's *My schedule* link goes back.
+* On a computer you can bookmark `http://<server>:4000/admin` to go straight to the console.
+* Old `/app` links and home-screen icons redirect to the new address.
+* `http://<server>:4000/cal/…` is each surgeon's calendar feed.
 
 ### 1. Start it
 
@@ -123,7 +123,7 @@ nano .env            # set JWT_SECRET (openssl rand -base64 48), ADMIN_EMAIL, AD
 docker compose up -d --build
 ```
 
-Open `http://<server-ip>:4000` and sign in with the admin email and password from `.env`. The account is created on the first start with an empty database. Then add services and surgeons, and create your first half-year.
+Open `http://<server-ip>:4000/admin` and sign in with the admin email and password from `.env`. The account is created on the first start with an empty database. Then add services and surgeons, and create your first half-year.
 
 **Optional: demo data instead.** To try it out with the 12 demo surgeons and a sample schedule, run this once *before* the first `up`:
 
@@ -169,10 +169,10 @@ The database lives in the `call-planner-data` Docker volume, so it survives upda
 
 ### Native iPhone/Android apps (optional)
 
-The web version at `/app` covers what surgeons need. For App Store / Play Store apps: set `EXPO_PUBLIC_API_URL` to your public URL, change the `com.example.callplanner` bundle IDs in `apps/mobile/app.json`, then build and submit with EAS (`npx eas-cli build`, `npx eas-cli submit`). This needs an Apple Developer account and a Google Play Console account. Any build has to reach the server over HTTPS.
+The web version at `/` covers what surgeons need. For App Store / Play Store apps: set `EXPO_PUBLIC_API_URL` to your public URL, change the `com.example.callplanner` bundle IDs in `apps/mobile/app.json`, then build and submit with EAS (`npx eas-cli build`, `npx eas-cli submit`). This needs an Apple Developer account and a Google Play Console account. Any build has to reach the server over HTTPS.
 
 Schedules contain staff names and phone numbers but no patient data. Still, check your hospital's IT/security requirements before hosting.
 
 ## Not built yet
 
-Ideas for next steps: push/email notifications (new schedule published, request decided), shift swaps between surgeons, a password-reset email flow, and an audit log of schedule changes.
+Ideas for next steps: push/email notifications (new schedule published, request decided), a password-reset email flow, and an audit log of schedule changes.

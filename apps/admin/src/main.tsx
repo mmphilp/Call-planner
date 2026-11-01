@@ -42,11 +42,11 @@ function App() {
 
   return (
     <MeContext.Provider value={user}>
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
       <div className="shell">
         <nav className="sidebar">
           <div className="brand">
-            <img src="/logo.png" alt="" />
+            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" />
             Call Planner
           </div>
           <NavLink to="/periods">Schedules</NavLink>
@@ -55,7 +55,9 @@ function App() {
           {isSuper && <NavLink to="/people">Surgeons</NavLink>}
           {isSuper && <NavLink to="/services">Services</NavLink>}
           <div className="spacer" />
-          <span className="muted small" style={{ padding: '0 10px' }}>
+          {/* The surgeon app lives at the site root and shares this sign-in. */}
+          <a href="/">{user.takesCall ? 'My schedule' : 'Open the app'} ↗</a>
+          <span className="muted small who" style={{ padding: '0 10px' }}>
             {user.name}
             {!isSuper && <><br />{user.role === 'viewer' ? 'View only' : 'Team admin'}</>}
           </span>

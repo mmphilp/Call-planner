@@ -12,7 +12,7 @@ COPY apps/mobile/package.json apps/mobile/package-lock.json apps/mobile/
 RUN cd apps/mobile && npm ci
 COPY . .
 RUN npm run build -w @call-planner/admin
-RUN cd apps/mobile && EXPO_OFFLINE=1 CI=1 EXPO_BASE_URL=/app npx expo export --platform web --output-dir /src/web-app
+RUN cd apps/mobile && EXPO_OFFLINE=1 CI=1 npx expo export --platform web --output-dir /src/web-app
 
 FROM node:22-slim
 ENV NODE_ENV=production \

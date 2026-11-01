@@ -1,5 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import { Linking, View } from 'react-native';
+import { AdminCard } from '@/components/AdminCard';
 import { Button, Card, Screen, SectionHeader, T } from '@/components/ui';
 import { API_URL } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -32,6 +33,8 @@ export default function ProfileScreen() {
         <T muted>{user.email}</T>
         {user.phone ? <T muted>{user.phone}</T> : null}
       </Card>
+
+      <AdminCard />
 
       <SectionHeader>Calendar sync</SectionHeader>
       <Card style={{ gap: 10 }}>
