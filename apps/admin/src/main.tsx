@@ -64,6 +64,7 @@ function App() {
           <button className="link" style={{ textAlign: 'left' }} onClick={() => (auth.set(null), setUser(null))}>
             Sign out
           </button>
+          <span className="version">Call Planner v{__APP_VERSION__}</span>
         </nav>
         <main className="main">
           <Routes>

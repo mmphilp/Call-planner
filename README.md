@@ -143,6 +143,7 @@ This signs in as `admin@example.com` / `password123`. Remove the demo data befor
 
 Surgeons need to reach the server from their phones anywhere, and logins should go over HTTPS. Pick one:
 
+* **An existing Cloudflare Tunnel.** If you already run `cloudflared` for something else, add this as another hostname on the same tunnel: in the Cloudflare dashboard go to Zero Trust → Networks → Tunnels → your tunnel → **Public Hostname** → **Add a public hostname**, choose a subdomain (e.g. `call` on `yourdomain.com`), Type **HTTP**, URL **`<server-LAN-IP>:4000`** (or `localhost:4000` if `cloudflared` runs directly on the same machine, not in a separate container). Cloudflare creates the DNS record. Set `TRUST_PROXY=true` in `.env` and restart. If your tunnel is set up with a `config.yml` instead of the dashboard, add an ingress rule above the catch-all: `- hostname: call.yourdomain.com` / `service: http://<server-LAN-IP>:4000`, then restart `cloudflared`.
 * **Cloudflare Tunnel (recommended).** Free, no port forwarding, and HTTPS is automatic. It needs a domain on Cloudflare. In the Cloudflare dashboard go to Zero Trust → Networks → Tunnels, create a tunnel, point a hostname such as `call.yourdomain.com` at `http://call-planner:4000`, and add the connector to `docker-compose.yml`:
   ```yaml
     cloudflared:

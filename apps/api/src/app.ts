@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
@@ -27,6 +27,9 @@ declare module '@fastify/jwt' {
     payload: { sub: string };
   }
 }
+
+/** The release version, from the root package.json. */
+const VERSION: string = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')).version;
 
 export interface AppOptions {
   db?: Db;
@@ -68,7 +71,7 @@ export async function buildApp(opts: AppOptions) {
     reply.code(status).send({ error: status >= 500 ? 'Something went wrong' : err.message });
   });
 
-  app.get('/health', { config: { public: true } }, async () => ({ ok: true }));
+  app.get('/health', { config: { public: true } }, async () => ({ ok: true, version: VERSION }));
   // Public details for the sign-in pages.
   app.get('/api/info', { config: { public: true } }, async () => ({ supportEmail: opts.supportEmail || null }));
   peopleRoutes(app, db);
