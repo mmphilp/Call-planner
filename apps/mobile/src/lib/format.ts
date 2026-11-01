@@ -64,3 +64,14 @@ export function nowLocal() {
   const n = new Date();
   return `${todayStr()}T${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
 }
+
+/** Group dates into runs of consecutive days: ['07-10','07-11','07-14'] → [['07-10','07-11'], ['07-14','07-14']]. */
+export function consecutiveRuns(dates: string[]): [string, string][] {
+  const runs: [string, string][] = [];
+  for (const d of [...new Set(dates)].sort()) {
+    const last = runs[runs.length - 1];
+    if (last && addDays(last[1], 1) === d) last[1] = d;
+    else runs.push([d, d]);
+  }
+  return runs;
+}

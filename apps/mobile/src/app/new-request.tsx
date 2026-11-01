@@ -4,7 +4,7 @@ import { ScrollView, TextInput, View } from 'react-native';
 import { Button, Card, Chip, ErrorText, SectionHeader, T } from '@/components/ui';
 import { RangeCalendar } from '@/components/RangeCalendar';
 import { api, type Period, type RequestType, type ShiftKind } from '@/lib/api';
-import { addDays, dateRange, todayStr } from '@/lib/format';
+import { addDays, consecutiveRuns, dateRange, todayStr } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
 const TYPES: { value: RequestType; label: string; help: string }[] = [
@@ -26,6 +26,9 @@ export default function NewRequestScreen() {
   const [type, setType] = useState<RequestType>('unavailable');
   const [start, setStart] = useState<string | null>(null);
   const [end, setEnd] = useState<string | null>(null);
+  // 'range': one continuous stretch; 'days': any separate days (one request per run of days).
+  const [mode, setMode] = useState<'range' | 'days'>('range');
+  const [days, setDays] = useState<Set<string>>(new Set());
   const [kinds, setKinds] = useState<ShiftKind[]>([]);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -35,24 +38,45 @@ export default function NewRequestScreen() {
     api<Period>('GET', `/api/periods/${periodId}`).then(setPeriod).catch((e: Error) => setError(e.message));
   }, [periodId]);
 
+  const runs: [string, string][] =
+    mode === 'days' ? consecutiveRuns([...days]) : start ? [[start, end ?? start]] : [];
+
   const submit = async () => {
-    if (!start || !period) return;
+    if (!runs.length || !period) return;
     setBusy(true);
     setError(null);
+    const sent: string[] = [];
     try {
-      await api('POST', '/api/requests', {
-        periodId: period.id,
-        type,
-        startDate: start,
-        endDate: end ?? start,
-        shiftKinds: kinds,
-        note: note.trim(),
-      });
+      for (const [from, to] of runs) {
+        await api('POST', '/api/requests', {
+          periodId: period.id,
+          type,
+          startDate: from,
+          endDate: to,
+          shiftKinds: kinds,
+          note: note.trim(),
+        });
+        sent.push(from);
+      }
       router.back();
     } catch (e) {
-      setError((e as Error).message);
+      // Keep only the days that still need sending so a retry doesn't duplicate.
+      if (mode === 'days' && sent.length) {
+        const done = runs.filter(([from]) => sent.includes(from));
+        setDays(new Set([...days].filter((d) => !done.some(([a, b]) => d >= a && d <= b))));
+        setError(`${(e as Error).message} (${sent.length} of ${runs.length} sent; the rest are still selected.)`);
+      } else {
+        setError((e as Error).message);
+      }
       setBusy(false);
     }
+  };
+
+  const toggleDay = (d: string) => {
+    const next = new Set(days);
+    if (next.has(d)) next.delete(d);
+    else next.add(d);
+    setDays(next);
   };
 
   const toggleKind = (k: ShiftKind) => setKinds(kinds.includes(k) ? kinds.filter((x) => x !== k) : [...kinds, k]);
@@ -72,7 +96,11 @@ export default function NewRequestScreen() {
       <T muted size={13}>{TYPES.find((x) => x.value === type)!.help}</T>
 
       <SectionHeader>Dates</SectionHeader>
-      {period && (
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Chip label="Date range" selected={mode === 'range'} onPress={() => setMode('range')} />
+        <Chip label="Separate days" selected={mode === 'days'} onPress={() => setMode('days')} />
+      </View>
+      {period && mode === 'range' && (
         <RangeCalendar
           min={min}
           max={addDays(period.endDate, 3)}
@@ -84,8 +112,17 @@ export default function NewRequestScreen() {
           }}
         />
       )}
+      {period && mode === 'days' && (
+        <RangeCalendar min={min} max={addDays(period.endDate, 3)} days={days} onToggleDay={toggleDay} />
+      )}
       <T muted size={13}>
-        {start ? dateRange(start, end ?? start) : 'Tap a start date, then an end date (or just one day).'}
+        {mode === 'range'
+          ? start
+            ? dateRange(start, end ?? start)
+            : 'Tap a start date, then an end date (or just one day).'
+          : runs.length
+            ? `${runs.map(([a, b]) => dateRange(a, b)).join('; ')}${runs.length > 1 ? ` — sent as ${runs.length} requests` : ''}`
+            : 'Tap each day you want. Use the arrows to pick days in other months.'}
       </T>
 
       <SectionHeader>Which call? (optional)</SectionHeader>
@@ -109,7 +146,12 @@ export default function NewRequestScreen() {
         />
       </Card>
 
-      <Button label="Send request" onPress={submit} busy={busy} disabled={!start || !period} />
+      <Button
+        label={runs.length > 1 ? `Send ${runs.length} requests` : 'Send request'}
+        onPress={submit}
+        busy={busy}
+        disabled={!runs.length || !period}
+      />
     </ScrollView>
   );
 }

@@ -3,22 +3,29 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { addDays, dayOfWeek, monthLabel } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
-/** Month calendar: tap a start date, then an end date. */
+/**
+ * Month calendar. Range mode: tap a start date, then an end date.
+ * Day mode (pass `days`): tap any days on and off.
+ */
 export function RangeCalendar({
   min,
   max,
-  start,
-  end,
+  start = null,
+  end = null,
   onChange,
+  days,
+  onToggleDay,
 }: {
   min: string;
   max: string;
-  start: string | null;
-  end: string | null;
-  onChange: (start: string | null, end: string | null) => void;
+  start?: string | null;
+  end?: string | null;
+  onChange?: (start: string | null, end: string | null) => void;
+  days?: Set<string>;
+  onToggleDay?: (date: string) => void;
 }) {
   const t = useTheme();
-  const [month, setMonth] = useState((start ?? min).slice(0, 7));
+  const [month, setMonth] = useState((start ?? [...(days ?? [])].sort()[0] ?? min).slice(0, 7));
 
   const first = `${month}-01`;
   const lead = (dayOfWeek(first) + 6) % 7; // Monday-first grid
@@ -33,8 +40,9 @@ export function RangeCalendar({
   };
 
   const tap = (d: string) => {
-    if (!start || end || d < start) onChange(d, null);
-    else onChange(start, d);
+    if (days) return onToggleDay?.(d);
+    if (!start || end || d < start) onChange?.(d, null);
+    else onChange?.(start, d);
   };
 
   return (
@@ -60,8 +68,8 @@ export function RangeCalendar({
           {cells.slice(r * 7, r * 7 + 7).map((d, i) => {
             if (!d) return <View key={i} style={styles.cell} />;
             const disabled = d < min || d > max;
-            const isEnd = d === start || d === end;
-            const inRange = start && end && d > start && d < end;
+            const isEnd = days ? days.has(d) : d === start || d === end;
+            const inRange = !days && start && end && d > start && d < end;
             return (
               <Pressable
                 key={d}
