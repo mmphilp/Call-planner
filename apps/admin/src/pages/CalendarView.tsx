@@ -32,6 +32,8 @@ interface Entry {
   people: string[];
   cover?: boolean;
   open?: boolean;
+  /** The service's night shift, shown on its own line under the day. */
+  night?: { label: string; people: string[]; cover: boolean; open: boolean };
 }
 
 /** "Minimally Invasive Surgery" → "MIS"; "Endocrine Surgery" → "Endocrine"; "Colorectal" → "Colorectal". */
@@ -100,16 +102,15 @@ export function CalendarView({ data, highlight }: { data: PeriodData; highlight:
       if (!day && !night) continue;
       const dw = day && who(day);
       const nw = night && who(night);
-      const same = dw && nw && dw.text === nw.text;
-      const label = same || !nw ? dw!.text : !dw ? `Night: ${nw.text}` : `${dw.text} / ${nw.text} (night)`;
       out.push({
         key: s.id,
         color: s.color,
         service: s.name,
-        label,
-        people: [...(dw?.ids ?? []), ...(nw?.ids ?? [])],
-        cover: !!(dw?.cover || nw?.cover),
-        open: !!(dw?.open || nw?.open),
+        label: dw ? dw.text : '',
+        people: dw?.ids ?? [],
+        cover: dw?.cover,
+        open: dw?.open,
+        night: nw && { label: nw.text, people: nw.ids, cover: nw.cover, open: nw.open },
       });
     }
     return out;
@@ -174,11 +175,20 @@ export function CalendarView({ data, highlight }: { data: PeriodData; highlight:
                 entriesFor(d).map((e) => (
                   <div
                     key={e.key}
-                    className={`cal-entry ${e.cover ? 'cover' : ''} ${e.open ? 'open' : ''} ${highlight && e.people.includes(highlight) ? 'hl' : ''}`}
-                    title={`${e.service}: ${e.label}`}
+                    className="cal-entry"
+                    title={`${e.service}: ${e.label ? `${e.label} (day)` : ''}${e.label && e.night ? ', ' : ''}${e.night ? `${e.night.label} (night)` : ''}`}
                     style={{ borderLeftColor: e.color }}
                   >
-                    <b>{serviceAbbr(e.service)}</b> {e.label}
+                    <div className={`cal-line ${e.cover ? 'cover' : ''} ${e.open ? 'open' : ''} ${highlight && e.people.includes(highlight) ? 'hl' : ''}`}>
+                      <b>{serviceAbbr(e.service)}</b> {e.label}
+                    </div>
+                    {e.night && (
+                      <div
+                        className={`cal-line night ${e.night.cover ? 'cover' : ''} ${e.night.open ? 'open' : ''} ${highlight && e.night.people.includes(highlight) ? 'hl' : ''}`}
+                      >
+                        Night: {e.night.label}
+                      </div>
+                    )}
                   </div>
                 ))}
             </div>
