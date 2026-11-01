@@ -2,7 +2,7 @@ import { View } from 'react-native';
 import { Badge, Card, Empty, ErrorText, Screen, SectionHeader, T, useApi } from '@/components/ui';
 import { api, type MyShift } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { KIND_LABEL, monthLabel, shiftSpan, shortDate, todayStr } from '@/lib/format';
+import { KIND_LABEL, monthLabel, shiftSpan, longDate, todayStr } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
 export default function MyCallScreen() {
@@ -36,7 +36,7 @@ export default function MyCallScreen() {
             NEXT UP
           </T>
           <T size={24} bold style={{ color: t.accentText, marginTop: 4 }}>
-            {shortDate(next.date)}
+            {longDate(next.date)}
           </T>
           <T size={17} style={{ color: t.accentText, marginTop: 2 }}>
             {next.serviceName} · {KIND_LABEL[next.kind]}
@@ -67,7 +67,7 @@ function ShiftRow({ shift }: { shift: MyShift }) {
     <Card style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
       <View style={{ width: 4, alignSelf: 'stretch', borderRadius: 2, backgroundColor: shift.color ?? t.accent }} />
       <View style={{ flex: 1, gap: 2 }}>
-        <T bold>{shortDate(shift.date)}</T>
+        <T bold>{longDate(shift.date)}</T>
         <T>
           {shift.serviceName} · {KIND_LABEL[shift.kind]}
         </T>

@@ -62,5 +62,34 @@ export function halfYearRange(year: number, half: Half): { start: DateStr; end: 
 }
 
 export function halfYearLabel(year: number, half: Half): string {
-  return half === 1 ? `Jan–Jun ${year}` : `Jul–Dec ${year}`;
+  return half === 1 ? `January–June ${year}` : `July–December ${year}`;
+}
+
+export const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+export const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** "Friday, January 8" (add the year with { year: true }; drop the weekday with { weekday: false }). */
+export function longDate(date: DateStr, opts: { weekday?: boolean; year?: boolean } = {}): string {
+  const [y, m, d] = date.slice(0, 10).split('-').map(Number);
+  const md = `${MONTH_NAMES[m - 1]} ${d}`;
+  const withDay = opts.weekday === false ? md : `${DAY_NAMES[dayOfWeek(date.slice(0, 10))]}, ${md}`;
+  return opts.year ? `${withDay}, ${y}` : withDay;
+}
+
+/** "Friday, January 8 – Monday, January 11", or a single date when they match. */
+export function longDateRange(a: DateStr, b: DateStr, opts: { weekday?: boolean; year?: boolean } = {}): string {
+  return a === b ? longDate(a, opts) : `${longDate(a, opts)} – ${longDate(b, opts)}`;
+}
+
+/** "5pm" / "7:30am" from 'YYYY-MM-DDTHH:mm'. */
+export function timeOfDay(t: LocalDateTime): string {
+  const h = Number(t.slice(11, 13));
+  const min = t.slice(14, 16);
+  const h12 = h % 12 || 12;
+  return `${h12}${min === '00' ? '' : `:${min}`}${h >= 12 ? 'pm' : 'am'}`;
+}
+
+/** "Friday, January 8, 5pm – Monday, January 11, 7am". */
+export function longSpan(start: LocalDateTime, end: LocalDateTime): string {
+  return `${longDate(start)}, ${timeOfDay(start)} – ${longDate(end)}, ${timeOfDay(end)}`;
 }

@@ -1,4 +1,4 @@
-import { mergeRules, type Rules } from '@call-planner/core';
+import { longDate, longDateRange, mergeRules, type Rules } from '@call-planner/core';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { del, get, patch, post, type Period, type Report, type RequestRow, type Schedule, type User } from '../api';
@@ -205,7 +205,7 @@ function Overview({ data, reload, goTo }: { data: PeriodData; reload: () => void
               <tr><td>Shifts filled</td><td className="num">{assigned} / {total}</td></tr>
               <tr><td>Pending requests</td><td className="num">{pending ? <button className="link" onClick={() => goTo('requests')}>{pending}</button> : 0}</td></tr>
               <tr><td>Rule problems</td><td className="num">{ruleBreaks ? <span className="badge bad">{ruleBreaks}</span> : <span className="badge ok">None</span>}</td></tr>
-              <tr><td>Dates</td><td className="num">{p.startDate} → {p.endDate}</td></tr>
+              <tr><td>Dates</td><td className="num">{longDateRange(p.startDate, p.endDate, { year: true })}</td></tr>
             </tbody>
           </table>
         </div>
@@ -228,7 +228,7 @@ function Overview({ data, reload, goTo }: { data: PeriodData; reload: () => void
         <div className="row" style={{ marginBottom: 10 }}>
           {p.holidays.map((h) => (
             <span key={h} className="badge">
-              {h}{' '}
+              {longDate(h, { year: true })}{' '}
               <button className="link" disabled={p.status === 'published'} onClick={() => setHolidays(p.holidays.filter((x) => x !== h))}>×</button>
             </span>
           ))}

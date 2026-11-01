@@ -248,7 +248,7 @@ describe('full scheduling workflow', () => {
     const created = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2, holidays: ['2027-09-06'] });
     expect(created.status).toBe(201);
     const periodId = created.body.id;
-    expect(created.body.label).toBe('Jul–Dec 2027');
+    expect(created.body.label).toBe('July–December 2027');
 
     // Draft periods are hidden from surgeons.
     expect((await call(surgeonTokens[0], 'GET', '/api/periods')).body).toEqual([]);

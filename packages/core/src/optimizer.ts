@@ -1,4 +1,4 @@
-import { addDays, toMinutes, weekStart } from './dates';
+import { addDays, longDate, toMinutes, weekStart } from './dates';
 import {
   mergeRules,
   SHIFT_KINDS,
@@ -218,7 +218,7 @@ class Model {
         out.push({
           type: 'nights_per_week',
           shiftIds: idxs.map((i) => this.info[i].shift.id),
-          message: `${idxs.length} nights in week of ${wk} (max ${r.maxNightsPerWeek})`,
+          message: `${idxs.length} nights in the week of ${longDate(wk)} (max ${r.maxNightsPerWeek})`,
         });
       }
     }
@@ -232,7 +232,7 @@ class Model {
         out.push({
           type: 'weekend_gap',
           shiftIds: [a.shift.id, b.shift.id],
-          message: `Weekends ${a.shift.date} and ${b.shift.date} are too close together`,
+          message: `Weekends of ${longDate(a.shift.date, { weekday: false })} and ${longDate(b.shift.date, { weekday: false })} are too close together`,
         });
       }
     }

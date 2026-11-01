@@ -1,4 +1,4 @@
-import { SHIFT_KINDS, type ShiftKind } from '@call-planner/core';
+import { longDateRange, SHIFT_KINDS, type ShiftKind } from '@call-planner/core';
 import type { PeriodData } from './Period';
 import { TYPE_LABEL } from './RequestsTab';
 
@@ -68,7 +68,7 @@ export function FairnessTab({ data }: { data: PeriodData }) {
                   <tr key={o.requestId}>
                     <td>{r?.userName}</td>
                     <td>{TYPE_LABEL[o.type]}</td>
-                    <td>{r && `${r.startDate} → ${r.endDate}`}</td>
+                    <td>{r && longDateRange(r.startDate, r.endDate)}</td>
                     <td className="small muted">{o.conflictingShiftIds.join(', ')}</td>
                   </tr>
                 );

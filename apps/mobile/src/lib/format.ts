@@ -1,8 +1,7 @@
 import type { ShiftKind } from './api';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export const KIND_LABEL: Record<ShiftKind, string> = { day: 'Day call', night: 'Night call', weekend: 'Weekend call' };
 
@@ -21,15 +20,21 @@ export function addDays(date: string, days: number) {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
-/** "Fri, Jan 8" */
-export function shortDate(date: string) {
+/** "Friday, January 8" */
+export function longDate(date: string) {
   const { m, d, dow } = parts(date);
   return `${DAYS[dow]}, ${MONTHS[m - 1]} ${d}`;
 }
 
+/** "January 8" */
+export function monthDay(date: string) {
+  const { m, d } = parts(date);
+  return `${MONTHS[m - 1]} ${d}`;
+}
+
 export function monthLabel(date: string) {
   const { y, m } = parts(date);
-  return `${MONTHS_LONG[m - 1]} ${y}`;
+  return `${MONTHS[m - 1]} ${y}`;
 }
 
 /** "5pm" / "7am" from 'YYYY-MM-DDTHH:mm' */
@@ -41,18 +46,18 @@ export function timeLabel(t: string) {
   return min === '00' ? `${h12}${suffix}` : `${h12}:${min}${suffix}`;
 }
 
-/** "Fri 5pm → Mon 7am" style span for a shift. */
+/** "5pm – 7am next day", or "Friday 5pm – Monday 7am" for a weekend block. */
 export function shiftSpan(s: { start: string; end: string }) {
   const sd = s.start.slice(0, 10);
   const ed = s.end.slice(0, 10);
   if (sd === ed) return `${timeLabel(s.start)} – ${timeLabel(s.end)}`;
   const days = Math.round((Date.parse(ed) - Date.parse(sd)) / 86_400_000);
   if (days === 1) return `${timeLabel(s.start)} – ${timeLabel(s.end)} next day`;
-  return `${DAYS[parts(sd).dow]} ${timeLabel(s.start)} – ${DAYS[parts(ed).dow]} ${shortDate(ed).split(', ')[1]} ${timeLabel(s.end)}`;
+  return `${DAYS[parts(sd).dow]} ${timeLabel(s.start)} – ${DAYS[parts(ed).dow]} ${timeLabel(s.end)}`;
 }
 
 export function dateRange(a: string, b: string) {
-  return a === b ? shortDate(a) : `${shortDate(a)} – ${shortDate(b)}`;
+  return a === b ? longDate(a) : `${longDate(a)} – ${longDate(b)}`;
 }
 
 export function dayOfWeek(date: string) {

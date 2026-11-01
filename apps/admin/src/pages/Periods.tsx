@@ -1,3 +1,4 @@
+import { longDate } from '@call-planner/core';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { get, post, type Period } from '../api';
@@ -89,7 +90,7 @@ export function PeriodsPage() {
                 <td>
                   <span className={`badge ${p.status}`}>{STATUS_LABEL[p.status]}</span>
                 </td>
-                <td>{p.requestDeadline ?? <span className="muted">—</span>}</td>
+                <td>{p.requestDeadline ? longDate(p.requestDeadline, { year: true }) : <span className="muted">—</span>}</td>
                 <td>{p.holidays.length}</td>
               </tr>
             ))}

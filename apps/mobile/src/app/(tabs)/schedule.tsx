@@ -4,12 +4,26 @@ import { MonthCoverage } from '@/components/MonthCoverage';
 import { Card, Chip, Empty, ErrorText, Screen, SectionHeader, T, useApi } from '@/components/ui';
 import { api, type Period, type Schedule } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { addDays, dayOfWeek, KIND_LABEL, monthLabel, nowLocal, shiftSpan, shortDate, todayStr } from '@/lib/format';
+import { addDays, dayOfWeek, KIND_LABEL, longDate, monthDay, monthLabel, nowLocal, shiftSpan, todayStr } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
-/** Shifts to list under a day: that day's shifts, plus a weekend block on each day it covers. */
+/**
+ * Shifts to list under a day: that day's shifts, plus a weekend block on each
+ * day it covers. Services alphabetically; weekend blocks last (on Fridays they
+ * start at 5pm, after the day's team call).
+ */
 function shiftsOn(schedule: Schedule | null, d: string) {
-  return schedule?.shifts.filter((s) => s.date === d || (s.kind === 'weekend' && s.date < d && s.end > `${d}T07:00`)) ?? [];
+  if (!schedule) return [];
+  const name = new Map(schedule.services.map((s) => [s.id, s.name]));
+  const order = { day: 0, night: 1, weekend: 2 } as const;
+  return schedule.shifts
+    .filter((s) => s.date === d || (s.kind === 'weekend' && s.date < d && s.end > `${d}T07:00`))
+    .sort(
+      (a, b) =>
+        Number(a.kind === 'weekend') - Number(b.kind === 'weekend') ||
+        (name.get(a.serviceId) ?? '').localeCompare(name.get(b.serviceId) ?? '') ||
+        order[a.kind] - order[b.kind],
+    );
 }
 
 function shiftMonth(month: string, delta: number) {
@@ -154,7 +168,7 @@ export default function ScheduleScreen() {
           {day && day.startsWith(month) && (
             <View style={{ gap: 6 }}>
               <SectionHeader>
-                {shortDate(day)}
+                {longDate(day)}
                 {day === todayStr() ? ' · Today' : ''}
               </SectionHeader>
               <Card style={{ gap: 10 }}>
@@ -171,7 +185,7 @@ export default function ScheduleScreen() {
             <Pressable onPress={() => setWeek(addDays(week, -7))} hitSlop={12} disabled={week <= schedule.period.startDate}>
               <T bold style={{ color: t.accent, opacity: week <= schedule.period.startDate ? 0.3 : 1 }}>‹ Prev</T>
             </Pressable>
-            <T bold>Week of {shortDate(week).split(', ')[1]}</T>
+            <T bold>Week of {monthDay(week)}</T>
             <Pressable onPress={() => setWeek(addDays(week, 7))} hitSlop={12} disabled={addDays(week, 7) > schedule.period.endDate}>
               <T bold style={{ color: t.accent, opacity: addDays(week, 7) > schedule.period.endDate ? 0.3 : 1 }}>Next ›</T>
             </Pressable>
@@ -182,7 +196,7 @@ export default function ScheduleScreen() {
             return (
               <View key={d} style={{ gap: 6 }}>
                 <SectionHeader>
-                  {shortDate(d)}
+                  {longDate(d)}
                   {d === todayStr() ? ' · Today' : ''}
                 </SectionHeader>
                 <Card style={{ gap: 10 }}>{list.map((s) => line(s))}</Card>

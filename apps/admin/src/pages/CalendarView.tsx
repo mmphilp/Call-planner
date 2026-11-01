@@ -1,9 +1,25 @@
-import { addDays, dayOfWeek, eachDay } from '@call-planner/core';
+import { addDays, DAY_NAMES, dayOfWeek, eachDay, MONTH_NAMES } from '@call-planner/core';
 import { useState } from 'react';
 import type { PeriodData } from './Period';
 
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const HIDDEN_KEY = 'call-planner-calendar-hidden-services';
+
+/** Services hidden on the calendar, remembered per browser. */
+function loadHidden(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveHidden(hidden: Set<string>) {
+  try {
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify([...hidden]));
+  } catch {
+    /* storage unavailable: the filter just isn't remembered */
+  }
+}
 
 type Shift = PeriodData['schedule']['shifts'][number];
 
@@ -40,9 +56,23 @@ export function CalendarView({ data, highlight }: { data: PeriodData; highlight:
     return months.includes(today) ? today : months[0];
   });
 
+  const [hidden, setHidden] = useState(loadHidden);
+  const toggle = (id: string) => {
+    const next = new Set(hidden);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setHidden(next);
+    saveHidden(next);
+  };
+
   const name = new Map(users.map((u) => [u.id, u.name]));
   const owner = new Map(schedule.assignments.map((a) => [a.shiftId, a]));
-  const services = [...schedule.services].sort((a, b) => a.sort - b.sort);
+  // Alphabetical, with weekend-block services after the weekday teams (on a
+  // Friday the weekend block starts at 5pm, after the day's team call).
+  const inSchedule = schedule.services
+    .filter((s) => schedule.shifts.some((x) => x.serviceId === s.id))
+    .sort((a, b) => Number(a.coversWeekend) - Number(b.coversWeekend) || a.name.localeCompare(b.name));
+  const services = inSchedule.filter((s) => !hidden.has(s.id));
   const svc = new Map(services.map((s) => [s.id, s]));
 
   const who = (s: Shift) => {
@@ -99,30 +129,35 @@ export function CalendarView({ data, highlight }: { data: PeriodData; highlight:
         <div className="tabs" style={{ marginBottom: 0, flex: 1 }}>
           {months.map((mo) => (
             <button key={mo} className={mo === month ? 'active' : ''} onClick={() => setMonth(mo)}>
-              {MONTHS[Number(mo.slice(5)) - 1].slice(0, 3)}
+              {MONTH_NAMES[Number(mo.slice(5)) - 1]}
             </button>
           ))}
         </div>
         <button onClick={() => window.print()}>Print</button>
       </div>
       <h2 className="print-only">
-        Call coverage — {MONTHS[m - 1]} {y}
+        Call coverage — {MONTH_NAMES[m - 1]} {y}
       </h2>
-      <div className="row small" style={{ marginBottom: 8, gap: 14 }}>
-        {services
-          .filter((s) => schedule.shifts.some((x) => x.serviceId === s.id))
-          .map((s) => (
-            <span key={s.id}>
-              <span className="svc-dot" style={{ background: s.color }} />
-              {s.name}
-            </span>
-          ))}
+      <div className="row small cal-filter" style={{ marginBottom: 8, gap: 14 }}>
+        <span className="muted no-print">Show:</span>
+        {inSchedule.map((s) => (
+          <label key={s.id} className={`check ${hidden.has(s.id) ? 'off' : ''}`}>
+            <input type="checkbox" className="no-print" checked={!hidden.has(s.id)} onChange={() => toggle(s.id)} />
+            <span className="svc-dot" style={{ background: s.color }} />
+            {s.name}
+          </label>
+        ))}
+        {hidden.size > 0 && (
+          <button className="link no-print" onClick={() => (setHidden(new Set()), saveHidden(new Set()))}>
+            Show all
+          </button>
+        )}
         <span className="muted">
           <i>Italic</i> = cross-cover
         </span>
       </div>
       <div className="cal-grid">
-        {WEEKDAYS.map((d) => (
+        {DAY_NAMES.map((d) => (
           <div key={d} className="cal-head">{d}</div>
         ))}
         {cells.map((d, i) => {

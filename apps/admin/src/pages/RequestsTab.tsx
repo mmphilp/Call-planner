@@ -1,4 +1,4 @@
-import type { ShiftKind } from '@call-planner/core';
+import { longDateRange, type ShiftKind } from '@call-planner/core';
 import { useState } from 'react';
 import { del, patch, post, type RequestRow } from '../api';
 import { useMe } from '../me';
@@ -66,7 +66,7 @@ export function RequestsTab({ data, reload }: { data: PeriodData; reload: () => 
                 <tr key={r.id}>
                   <td>{r.userName}</td>
                   <td>{TYPE_LABEL[r.type]}</td>
-                  <td>{r.startDate === r.endDate ? r.startDate : `${r.startDate} → ${r.endDate}`}</td>
+                  <td>{longDateRange(r.startDate, r.endDate)}</td>
                   <td>{r.shiftKinds?.length ? r.shiftKinds.map((k) => KIND_LABEL[k]).join(', ') : 'All call'}</td>
                   <td className="small">{r.note}</td>
                   <td><span className={`badge ${r.status}`}>{r.status}</span></td>

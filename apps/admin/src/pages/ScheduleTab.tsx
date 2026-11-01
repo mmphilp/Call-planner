@@ -1,4 +1,4 @@
-import { dayOfWeek, eachDay, weekStart, type Shift } from '@call-planner/core';
+import { dayOfWeek, eachDay, longDate, longSpan, MONTH_NAMES, weekStart, type Shift } from '@call-planner/core';
 import { useMemo, useState } from 'react';
 import { post, put, type RequestRow } from '../api';
 import { useMe } from '../me';
@@ -9,8 +9,6 @@ const LOCUM = '__locum__';
 
 type ScheduledShift = PeriodData['schedule']['shifts'][number];
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 interface OptimizeSummary {
   unassignedShiftIds: string[];
@@ -156,7 +154,7 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
       .filter(Boolean)
       .join(' ');
     return (
-      <div className={classes} title={issues?.join('\n') ?? (shift.kind === 'weekend' ? `${shift.start} → ${shift.end}` : undefined)}>
+      <div className={classes} title={issues?.join('\n') ?? (shift.kind === 'weekend' ? longSpan(shift.start, shift.end) : undefined)}>
         <select
           value={a?.userId ?? ''}
           disabled={!canEdit}
@@ -254,7 +252,7 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
       <>
       <div className="tabs" style={{ marginBottom: 8 }}>
         {months.map((m) => (
-          <button key={m} className={m === month ? 'active' : ''} onClick={() => setMonth(m)}>{MONTHS[m]}</button>
+          <button key={m} className={m === month ? 'active' : ''} onClick={() => setMonth(m)}>{MONTH_NAMES[m]}</button>
         ))}
       </div>
 
@@ -285,7 +283,7 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
               return (
                 <tr key={d} className={`${weekStart(d) === d ? 'week-start' : ''} ${isHoliday ? 'holiday' : ''}`}>
                   <td className="date">
-                    {DOW[dow]} {d.slice(5)} {isHoliday && <span title="Holiday">★</span>}
+                    {longDate(d)} {isHoliday && <span title="Holiday">★</span>}
                   </td>
                   {services.flatMap((s) => [
                     s.coversWeekdayDay && <td key={`${s.id}d`}>{cell(shiftById.get(`${s.id}:day:${d}`), 'weekend')}</td>,
@@ -307,19 +305,6 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
       )}
     </>
   );
-}
-
-const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-/** 'Fri Jul 3' from 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:mm'. */
-function dayLabel(t: string) {
-  const d = t.slice(0, 10);
-  return `${DOW[dayOfWeek(d)]} ${MONTH_SHORT[Number(d.slice(5, 7)) - 1]} ${Number(d.slice(8, 10))}`;
-}
-
-function timeLabel(t: string) {
-  const h = Number(t.slice(11, 13));
-  return `${h % 12 || 12}${h >= 12 ? 'pm' : 'am'}`;
 }
 
 /** Every weekend block in the period on one page: who's on, who's away. */
@@ -394,10 +379,10 @@ function WeekendTable({
               return (
                 <tr key={fri} className={any.holiday ? 'holiday' : ''}>
                   <td className="date">
-                    {dayLabel(fri)} {any.holiday && <span title="Includes a holiday">★</span>}
+                    {longDate(fri)} {any.holiday && <span title="Includes a holiday">★</span>}
                   </td>
-                  <td className="small muted">
-                    {dayLabel(any.start)} {timeLabel(any.start)} – {dayLabel(any.end)} {timeLabel(any.end)}
+                  <td className="small muted" style={{ whiteSpace: 'normal', minWidth: 220 }}>
+                    {longSpan(any.start, any.end)}
                   </td>
                   {shifts.map((s, i) => <td key={services[i].id}>{cell(s, '—')}</td>)}
                   <td className="small" style={{ whiteSpace: 'normal' }}>

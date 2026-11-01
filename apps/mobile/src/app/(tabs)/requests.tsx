@@ -3,7 +3,7 @@ import { Pressable, View } from 'react-native';
 import { Badge, Button, Card, Empty, ErrorText, Screen, SectionHeader, T, useApi } from '@/components/ui';
 import { api, type CallRequest, type Period } from '@/lib/api';
 import { confirmAsync, notify } from '@/lib/dialogs';
-import { dateRange, shortDate, todayStr } from '@/lib/format';
+import { dateRange, longDate, todayStr } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
 export const TYPE_LABEL: Record<CallRequest['type'], string> = {
@@ -47,7 +47,7 @@ export default function RequestsScreen() {
       {open.map((p) => (
         <Card key={p.id} style={{ gap: 10 }}>
           <T bold size={17}>{p.label} is taking requests</T>
-          {p.requestDeadline && <T muted>Send requests by {shortDate(p.requestDeadline)}.</T>}
+          {p.requestDeadline && <T muted>Send requests by {longDate(p.requestDeadline)}.</T>}
           <Button label="New request" onPress={() => router.push({ pathname: '/new-request', params: { periodId: p.id } })} />
         </Card>
       ))}

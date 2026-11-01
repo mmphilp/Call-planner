@@ -168,3 +168,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.4); }
   .cal-cell { min-height: 90px; }
   .cal-entry.hl { background: none; color: inherit; font-weight: 700; }
 }
+
+.cal-filter label.check { cursor: pointer; }
+.cal-filter label.check.off { opacity: 0.45; }
+@media print { .cal-filter label.check.off { display: none; } }
