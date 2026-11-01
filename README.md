@@ -49,8 +49,9 @@ Call scheduling for a surgical group: surgeons send requests from an iPhone/Andr
   * Once it's taken or accepted, it appears on the schedule's *Swaps* tab. The admin sees any rule problems it would cause before approving.
   * Approving updates the schedule and calendars.
   * The overall admin approves weekends; team admins approve their team's weekday trades.
-* **Viewer role.** For an assistant: read-only access to the admin console (schedules, requests, swaps, fairness, holidays, CSV export, printing). They can't change anything or send requests.
+* **Viewer role.** For an assistant: in the app they get *Schedule* and *Profile* (no *My Call* or *Requests*), plus read-only access to the admin console (schedules, requests, swaps, fairness, holidays, CSV export, printing). They can't change anything or send requests.
 * **Calendar.** Once a schedule has assignments, the Schedule tab opens on a month calendar of who covers each service each day. It's printable, and the *Highlight* box picks out one surgeon. In the app, the Schedule screen has a *Month* view: dots mark your call days, and tapping a day lists who's on.
+* **Calendar labels.** On the *Services* page, each service can have a short calendar label (e.g. *CRS* for Colorectal, *Surg Onc* for Surgical Oncology). Left blank, it's worked out from the name.
 * **Service coverage.** Tick only the call each service covers; a shared weekend service should only have *Weekend block*. Changing coverage updates unpublished schedules automatically. A published schedule shows a warning with an *Unpublish and rebuild shifts* button.
 * **Scope.** The overall admin can optimize *Everything*, *Weekends only*, or one team's weekdays.
 

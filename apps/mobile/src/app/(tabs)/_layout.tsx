@@ -20,7 +20,8 @@ export default function TabsLayout() {
 
   return (
     <NativeTabs backgroundColor={t.card} indicatorColor={t.bg} labelStyle={{ selected: { color: t.accent } }}>
-      <NativeTabs.Trigger name="index">
+      {/* View-only accounts (e.g. an assistant) take no call, so they start on Schedule. */}
+      <NativeTabs.Trigger name="index" hidden={user.role === 'viewer'}>
         <NativeTabs.Trigger.Label>My Call</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="calendar" md="event" />
       </NativeTabs.Trigger>
@@ -28,7 +29,6 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Schedule</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="person.3" md="groups" />
       </NativeTabs.Trigger>
-      {/* View-only accounts (e.g. an assistant) don't send requests or trade shifts. */}
       <NativeTabs.Trigger name="requests" hidden={user.role === 'viewer'}>
         <NativeTabs.Trigger.Label>Requests</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="tray.and.arrow.up" md="outbox" />

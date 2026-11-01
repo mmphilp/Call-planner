@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { Pressable, View } from 'react-native';
 import { Badge, Card, Empty, ErrorText, Screen, SectionHeader, T, useApi } from '@/components/ui';
 import { api, type MyShift } from '@/lib/api';
@@ -10,6 +10,8 @@ export default function MyCallScreen() {
   const { user } = useAuth();
   const t = useTheme();
   const { data, error, refreshing, refresh } = useApi(() => api<MyShift[]>('GET', `/api/me/shifts?from=${todayStr()}`));
+  // View-only accounts have no call of their own.
+  if (user?.role === 'viewer') return <Redirect href="/schedule" />;
 
   const shifts = data ?? [];
   const [next, ...rest] = shifts;

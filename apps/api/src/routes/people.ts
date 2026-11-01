@@ -35,6 +35,7 @@ const userPatch = userFields.partial();
 
 const serviceFields = z.object({
   name: z.string().min(1),
+  shortName: z.string().trim().max(16),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   coversWeekdayDay: z.boolean(),
   coversWeekdayNight: z.boolean(),
@@ -42,6 +43,7 @@ const serviceFields = z.object({
   sort: z.number().int(),
 });
 const serviceBody = serviceFields.extend({
+  shortName: serviceFields.shape.shortName.default(''),
   color: serviceFields.shape.color.default('#2563eb'),
   coversWeekdayDay: serviceFields.shape.coversWeekdayDay.default(true),
   coversWeekdayNight: serviceFields.shape.coversWeekdayNight.default(true),
@@ -161,9 +163,9 @@ export function peopleRoutes(app: FastifyInstance, db: Db) {
     const id = s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || randomUUID();
     if (db.prepare('SELECT 1 FROM services WHERE id = ?').get(id)) throw httpError(409, 'Service already exists');
     db.prepare(
-      `INSERT INTO services (id, name, color, covers_day, covers_night, covers_weekend, sort)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, s.name, s.color, +s.coversWeekdayDay, +s.coversWeekdayNight, +s.coversWeekend, s.sort);
+      `INSERT INTO services (id, name, short_name, color, covers_day, covers_night, covers_weekend, sort)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, s.name, s.shortName, s.color, +s.coversWeekdayDay, +s.coversWeekdayNight, +s.coversWeekend, s.sort);
     syncUnpublished(db);
     reply.code(201);
     return toService(db.prepare('SELECT * FROM services WHERE id = ?').get(id) as any);
@@ -174,6 +176,7 @@ export function peopleRoutes(app: FastifyInstance, db: Db) {
     const s = parse(servicePatch, req.body);
     const cols: Record<string, unknown> = {
       name: s.name,
+      short_name: s.shortName,
       color: s.color,
       covers_day: s.coversWeekdayDay === undefined ? undefined : +s.coversWeekdayDay,
       covers_night: s.coversWeekdayNight === undefined ? undefined : +s.coversWeekdayNight,

@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS users (${USER_COLUMNS}
 CREATE TABLE IF NOT EXISTS services (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
+  -- Short label for calendars (e.g. CRS); empty = worked out from the name.
+  short_name TEXT NOT NULL DEFAULT '',
   color TEXT NOT NULL DEFAULT '#2563eb',
   covers_day INTEGER NOT NULL DEFAULT 1,
   covers_night INTEGER NOT NULL DEFAULT 1,
@@ -166,6 +168,7 @@ function migrate(db: Db) {
   }
   if (!serviceCols.includes('weekday_rules')) db.exec('ALTER TABLE services ADD COLUMN weekday_rules INTEGER NOT NULL DEFAULT 1');
   if (!serviceCols.includes('backup_service_id')) db.exec('ALTER TABLE services ADD COLUMN backup_service_id TEXT');
+  if (!serviceCols.includes('short_name')) db.exec(`ALTER TABLE services ADD COLUMN short_name TEXT NOT NULL DEFAULT ''`);
   const assignmentCols = (db.prepare('PRAGMA table_info(assignments)').all() as { name: string }[]).map((c) => c.name);
   if (!assignmentCols.includes('source')) db.exec('ALTER TABLE assignments ADD COLUMN source TEXT');
 }

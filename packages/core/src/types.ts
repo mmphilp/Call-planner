@@ -11,6 +11,8 @@ export const SHIFT_KINDS: ShiftKind[] = ['day', 'night', 'weekend'];
 export interface Service {
   id: string;
   name: string;
+  /** Short label for calendars, e.g. "CRS" for Colorectal. Empty = worked out from the name. */
+  shortName?: string;
   color?: string;
   coversWeekdayDay: boolean;
   coversWeekdayNight: boolean;

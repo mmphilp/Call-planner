@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react';
 import { del, get, patch, post, type Schedule } from '../api';
+import { autoLabel } from '../serviceLabel';
 import { useLoad } from '../useLoad';
 
 type Service = Schedule['services'][number];
-type Editable = Pick<Service, 'name' | 'color' | 'coversWeekdayDay' | 'coversWeekdayNight' | 'coversWeekend'>;
+type Editable = Pick<Service, 'name' | 'color' | 'coversWeekdayDay' | 'coversWeekdayNight' | 'coversWeekend'> & { shortName: string };
 
-const FIELDS: (keyof Editable)[] = ['name', 'color', 'coversWeekdayDay', 'coversWeekdayNight', 'coversWeekend'];
+const FIELDS: (keyof Editable)[] = ['name', 'shortName', 'color', 'coversWeekdayDay', 'coversWeekdayNight', 'coversWeekend'];
 
 const blankService: Editable = {
   name: '',
+  shortName: '',
   color: '#2563eb',
   coversWeekdayDay: true,
   coversWeekdayNight: true,
@@ -20,7 +22,7 @@ const blankService: Editable = {
 const PALETTE = ['#2563eb', '#dc2626', '#059669', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#4d7c0f'];
 
 function changes(original: Service, draft: Editable): Partial<Editable> {
-  return Object.fromEntries(FIELDS.filter((f) => draft[f] !== original[f]).map((f) => [f, draft[f]]));
+  return Object.fromEntries(FIELDS.filter((f) => draft[f] !== (original[f] ?? '')).map((f) => [f, draft[f]]));
 }
 
 export function ServicesPage() {
@@ -33,7 +35,7 @@ export function ServicesPage() {
   // Start editing from the saved values whenever they (re)load.
   useEffect(() => {
     if (!services) return;
-    setDrafts(Object.fromEntries(services.map((s) => [s.id, { ...s }])));
+    setDrafts(Object.fromEntries(services.map((s) => [s.id, { ...s, shortName: s.shortName ?? '' }])));
     const used = new Set(services.map((s) => s.color.toLowerCase()));
     setAdding((a) => ({ ...a, color: PALETTE.find((c) => !used.has(c)) ?? PALETTE[services.length % PALETTE.length] }));
   }, [services]);
@@ -97,7 +99,7 @@ export function ServicesPage() {
         </div>
         <div className="row">
           {dirty.length > 0 && <span className="muted small">{dirty.length} unsaved change{dirty.length === 1 ? '' : 's'}</span>}
-          <button disabled={!dirty.length || saving} onClick={() => services && setDrafts(Object.fromEntries(services.map((s) => [s.id, { ...s }])))}>
+          <button disabled={!dirty.length || saving} onClick={() => services && setDrafts(Object.fromEntries(services.map((s) => [s.id, { ...s, shortName: s.shortName ?? '' }])))}>
             Discard
           </button>
           <button className="primary" disabled={!dirty.length || saving} onClick={save}>
@@ -112,6 +114,7 @@ export function ServicesPage() {
           <thead>
             <tr>
               <th>Service</th>
+              <th>Calendar label<br /><span className="small">blank = automatic</span></th>
               <th>Color</th>
               <th>Weekday days<br /><span className="small">7am–5pm</span></th>
               <th>Weekday nights<br /><span className="small">5pm–7am, Mon–Thu</span></th>
@@ -127,6 +130,15 @@ export function ServicesPage() {
               return (
                 <tr key={s.id} style={changed ? { background: 'var(--warn-bg)' } : undefined}>
                   <td><input value={d.name} onChange={(e) => edit(s.id, 'name', e.target.value)} /></td>
+                  <td>
+                    <input
+                      style={{ width: 110 }}
+                      maxLength={16}
+                      value={d.shortName}
+                      placeholder={autoLabel(d.name)}
+                      onChange={(e) => edit(s.id, 'shortName', e.target.value)}
+                    />
+                  </td>
                   <td><input type="color" value={d.color} onChange={(e) => edit(s.id, 'color', e.target.value)} /></td>
                   {coverage(d, (f, v) => edit(s.id, f, v))}
                   <td><button className="link danger" onClick={() => remove(s)}>Delete</button></td>
@@ -134,7 +146,7 @@ export function ServicesPage() {
               );
             })}
             {services?.length === 0 && (
-              <tr><td colSpan={6} className="muted">No services yet. Add your first one below.</td></tr>
+              <tr><td colSpan={7} className="muted">No services yet. Add your first one below.</td></tr>
             )}
           </tbody>
           <tfoot>
@@ -144,6 +156,15 @@ export function ServicesPage() {
                   placeholder="New service, e.g. Orthopedics"
                   value={adding.name}
                   onChange={(e) => setAdding({ ...adding, name: e.target.value })}
+                />
+              </td>
+              <td>
+                <input
+                  style={{ width: 110 }}
+                  maxLength={16}
+                  value={adding.shortName}
+                  placeholder={adding.name.trim() ? autoLabel(adding.name.trim()) : 'e.g. CRS'}
+                  onChange={(e) => setAdding({ ...adding, shortName: e.target.value })}
                 />
               </td>
               <td><input type="color" value={adding.color} onChange={(e) => setAdding({ ...adding, color: e.target.value })} /></td>

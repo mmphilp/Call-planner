@@ -134,6 +134,7 @@ export function toService(
   return {
     id: r.id,
     name: r.name,
+    shortName: r.short_name ?? '',
     color: r.color,
     coversWeekdayDay: !!r.covers_day,
     coversWeekdayNight: !!r.covers_night,

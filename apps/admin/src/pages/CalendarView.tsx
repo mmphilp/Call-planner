@@ -1,6 +1,7 @@
 import { addDays, DAY_NAMES, dayOfWeek, eachDay, MONTH_NAMES } from '@call-planner/core';
 import { useState } from 'react';
 import type { PeriodData } from './Period';
+import { serviceLabel } from '../serviceLabel';
 import { ServiceFilter, sortServices, type ServiceFilterState } from './ServiceFilter';
 
 type Shift = PeriodData['schedule']['shifts'][number];
@@ -8,7 +9,10 @@ type Shift = PeriodData['schedule']['shifts'][number];
 interface Entry {
   key: string;
   color: string;
+  /** Short calendar label, e.g. CRS. */
   service: string;
+  /** Full service name, for the tooltip. */
+  fullName: string;
   label: string;
   /** Person ids on this entry, for highlighting. */
   people: string[];
@@ -17,12 +21,6 @@ interface Entry {
   /** The service's night shift, shown on its own line under the day. */
   night?: { label: string; people: string[]; cover: boolean; open: boolean };
 }
-
-/** "Minimally Invasive Surgery" → "MIS"; "Endocrine Surgery" → "Endocrine"; "Colorectal" → "Colorectal". */
-const serviceAbbr = (name: string) => {
-  const words = name.split(/\s+/).filter(Boolean);
-  return words.length >= 3 ? words.map((w) => w[0].toUpperCase()).join('') : words[0] ?? name;
-};
 
 /** Last name, or the whole name if it's one word ("Dr. Goda E Savulionyte" → "Savulionyte"). */
 const shortName = (name: string) => name.replace(/^Dr\.?\s+/, '').split(' ').at(-1) ?? name;
@@ -74,7 +72,7 @@ export function CalendarView({
       );
       if (weekend) {
         const w = who(weekend);
-        out.push({ key: `${s.id}w`, color: s.color, service: s.name, label: w.text, people: w.ids, open: w.open });
+        out.push({ key: `${s.id}w`, color: s.color, service: serviceLabel(s), fullName: s.name, label: w.text, people: w.ids, open: w.open });
         continue;
       }
       const day = schedule.shifts.find((x) => x.serviceId === s.id && x.kind === 'day' && x.date === d);
@@ -85,7 +83,8 @@ export function CalendarView({
       out.push({
         key: s.id,
         color: s.color,
-        service: s.name,
+        service: serviceLabel(s),
+        fullName: s.name,
         label: dw ? dw.text : '',
         people: dw?.ids ?? [],
         cover: dw?.cover,
@@ -148,11 +147,11 @@ export function CalendarView({
                   <div
                     key={e.key}
                     className="cal-entry"
-                    title={`${e.service}: ${e.label ? `${e.label} (day)` : ''}${e.label && e.night ? ', ' : ''}${e.night ? `${e.night.label} (night)` : ''}`}
+                    title={`${e.fullName}: ${e.label ? `${e.label} (day)` : ''}${e.label && e.night ? ', ' : ''}${e.night ? `${e.night.label} (night)` : ''}`}
                     style={{ borderLeftColor: e.color }}
                   >
                     <div className={`cal-line ${e.cover ? 'cover' : ''} ${e.open ? 'open' : ''} ${highlight && e.people.includes(highlight) ? 'hl' : ''}`}>
-                      <b>{serviceAbbr(e.service)}</b> {e.label}
+                      <b>{e.service}</b> {e.label}
                     </div>
                     {e.night && (
                       <div

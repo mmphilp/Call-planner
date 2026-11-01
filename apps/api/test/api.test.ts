@@ -77,6 +77,13 @@ describe('auth', () => {
 });
 
 describe('partial updates', () => {
+  it('saves a service calendar label without touching anything else', async () => {
+    const before = (await call(adminToken, 'GET', '/api/services')).body.find((s: any) => s.id === 'general');
+    expect(before.shortName).toBe('');
+    const after = (await call(adminToken, 'PATCH', '/api/services/general', { shortName: ' GS ' })).body;
+    expect(after).toEqual({ ...before, shortName: 'GS' });
+  });
+
   it('only changes the fields sent', async () => {
     const svc = await call(adminToken, 'PATCH', '/api/services/hand', { color: '#ff0000' });
     expect(svc.body).toMatchObject({ color: '#ff0000', coversWeekdayDay: true, coversWeekdayNight: false, coversWeekend: false });
