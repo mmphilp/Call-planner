@@ -45,7 +45,10 @@ export default function ScheduleScreen() {
   // Published schedules, and proposed ones out for review.
   const published = useMemo(() => (periods.data ?? []).filter((p) => p.status === 'published' || p.status === 'review'), [periods.data]);
   const [periodId, setPeriodId] = useState<string | null>(null);
-  const [schedule, setSchedule] = useState<Schedule | null>(null);
+  // The whole schedule as loaded; `schedule` below is it filtered to the services shown.
+  const [full, setSchedule] = useState<Schedule | null>(null);
+  // Services shown; null = the default (your own services plus the weekend service).
+  const [shown, setShown] = useState<Set<string> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [week, setWeek] = useState(weekOf(todayStr()));
   const [mode, setMode] = useState<'week' | 'month'>('week');
@@ -66,7 +69,7 @@ export default function ScheduleScreen() {
   }, [published, periodId]);
 
   // My flags on a proposed schedule, refreshed when coming back from flagging.
-  const inReview = schedule?.period.status === 'review';
+  const inReview = full?.period.status === 'review';
   const canFlag = inReview && user?.role !== 'viewer';
   const [flags, setFlags] = useState<Flag[]>([]);
   useFocusEffect(
@@ -91,6 +94,33 @@ export default function ScheduleScreen() {
       })
       .catch((e: Error) => setError(e.message));
   }, [periodId]);
+
+  // Services in this schedule: alphabetical, weekend services last.
+  const allServices = useMemo(
+    () =>
+      (full?.services ?? [])
+        .filter((sv) => full!.shifts.some((x) => x.serviceId === sv.id))
+        .sort((a, b) => Number(!!a.coversWeekend) - Number(!!b.coversWeekend) || a.name.localeCompare(b.name)),
+    [full],
+  );
+  // By default a surgeon sees their own services plus the weekend service; others see everything.
+  const defaultShown = useMemo(() => {
+    const mine = new Set(user?.serviceIds ?? []);
+    const own = allServices.filter((sv) => mine.has(sv.id) || sv.coversWeekend);
+    return new Set((user?.role === 'surgeon' && own.length ? own : allServices).map((sv) => sv.id));
+  }, [allServices, user]);
+  const visible = shown ?? defaultShown;
+  const schedule = useMemo(
+    () => (full ? { ...full, shifts: full.shifts.filter((x) => visible.has(x.serviceId)) } : null),
+    [full, visible],
+  );
+  const toggle = (id: string) => {
+    const next = new Set(visible);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setShown(next);
+  };
+  const isDefault = [...defaultShown].every((id) => visible.has(id)) && visible.size === defaultShown.size;
 
   const people = useMemo(() => new Map(schedule?.people.map((p) => [p.id, p])), [schedule]);
   const services = useMemo(() => new Map(schedule?.services.map((s) => [s.id, s])), [schedule]);
@@ -172,6 +202,54 @@ export default function ScheduleScreen() {
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
           <Chip label="Week" selected={mode === 'week'} onPress={() => setMode('week')} />
           <Chip label="Month" selected={mode === 'month'} onPress={() => setMode('month')} />
+        </View>
+      )}
+
+      {allServices.length > 1 && (
+        <View style={{ gap: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <T muted size={13}>Showing {visible.size === allServices.length ? 'all services' : `${visible.size} of ${allServices.length} services`}</T>
+            <View style={{ flexDirection: 'row', gap: 14 }}>
+              {!isDefault && (
+                <Pressable onPress={() => setShown(null)} hitSlop={8}>
+                  <T size={13} bold style={{ color: t.accent }}>{user?.role === 'surgeon' ? 'Just mine' : 'Reset'}</T>
+                </Pressable>
+              )}
+              {visible.size < allServices.length && (
+                <Pressable onPress={() => setShown(new Set(allServices.map((sv) => sv.id)))} hitSlop={8}>
+                  <T size={13} bold style={{ color: t.accent }}>Show all</T>
+                </Pressable>
+              )}
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {allServices.map((sv) => {
+              const on = visible.has(sv.id);
+              return (
+                <Pressable
+                  key={sv.id}
+                  onPress={() => toggle(sv.id)}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: on }}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: on ? sv.color : t.border,
+                    backgroundColor: on ? t.card : 'transparent',
+                    opacity: on ? 1 : 0.55,
+                  }}
+                >
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: sv.color }} />
+                  <T size={13} bold={on}>{sv.name}</T>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
       )}
 

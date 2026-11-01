@@ -64,7 +64,7 @@ export interface Shift {
 
 export interface Schedule {
   period: Period;
-  services: { id: string; name: string; color: string }[];
+  services: { id: string; name: string; color: string; coversWeekend?: boolean }[];
   shifts: Shift[];
   assignments: { shiftId: string; userId: string }[];
   people: { id: string; name: string; phone: string | null }[];
