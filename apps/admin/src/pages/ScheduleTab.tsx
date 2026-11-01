@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { post, put, type RequestRow } from '../api';
 import { useMe } from '../me';
 import { CalendarView } from './CalendarView';
+import { ServiceFilter, sortServices, useServiceFilter, type ServiceFilterState } from './ServiceFilter';
 import type { PeriodData } from './Period';
 
 const LOCUM = '__locum__';
@@ -82,10 +83,13 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
   const months = [...new Set(eachDay(p.startDate, p.endDate).map((d) => Number(d.slice(5, 7)) - 1))];
   const monthPrefix = `${p.year}-${String(month + 1).padStart(2, '0')}`;
   const weekdays = eachDay(p.startDate, p.endDate).filter((d) => d.startsWith(monthPrefix) && dayOfWeek(d) % 6 !== 0);
+  // One service filter shared by the Calendar, Weekdays and Weekends views.
+  const filter = useServiceFilter();
   // Team admins see just their own teams in the weekday grid.
-  const services = schedule.services.filter(
-    (s) => (s.coversWeekdayDay || s.coversWeekdayNight) && (isSuper || me.adminServiceIds.includes(s.id)),
+  const gridServices = sortServices(
+    schedule.services.filter((s) => (s.coversWeekdayDay || s.coversWeekdayNight) && (isSuper || me.adminServiceIds.includes(s.id))),
   );
+  const services = gridServices.filter((s) => !filter.hidden.has(s.id));
 
   const optimize = async () => {
     const scoped = schedule.assignments.filter((a) => {
@@ -242,14 +246,15 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
         {hasWeekend && <button className={view === 'weekends' ? 'primary' : ''} onClick={() => setView('weekends')}>Weekends</button>}
       </div>
 
-      {view === 'calendar' && <CalendarView data={data} highlight={highlight} />}
+      {view === 'calendar' && <CalendarView data={data} highlight={highlight} filter={filter} />}
 
       {view === 'weekends' && (
-        <WeekendTable data={data} cell={cell} shiftById={shiftById} owner={owner} highlight={highlight} />
+        <WeekendTable data={data} cell={cell} shiftById={shiftById} owner={owner} highlight={highlight} filter={filter} />
       )}
 
       {view === 'weekdays' && (
       <>
+      {gridServices.length > 1 && <ServiceFilter services={gridServices} filter={filter} />}
       <div className="tabs" style={{ marginBottom: 8 }}>
         {months.map((m) => (
           <button key={m} className={m === month ? 'active' : ''} onClick={() => setMonth(m)}>{MONTH_NAMES[m]}</button>
@@ -314,19 +319,22 @@ function WeekendTable({
   shiftById,
   owner,
   highlight,
+  filter,
 }: {
   data: PeriodData;
   cell: (shift: ScheduledShift | undefined, absorbedLabel: string) => React.ReactNode;
   shiftById: Map<string, ScheduledShift>;
   owner: Map<string, { userId: string }>;
   highlight: string;
+  filter: ServiceFilterState;
 }) {
   const { schedule, requests, users } = data;
-  const services = schedule.services.filter((s) => s.coversWeekend);
+  const allServices = sortServices(schedule.services.filter((s) => s.coversWeekend));
+  const services = allServices.filter((s) => !filter.hidden.has(s.id));
   const weekends = schedule.shifts.filter((s) => s.kind === 'weekend');
   const fridays = [...new Set(weekends.map((s) => s.date))].sort();
   const nameOf = new Map(users.map((u) => [u.id, u.name]));
-  const pool = users.filter((u) => u.active && u.takesCall && services.some((s) => u.serviceIds.includes(s.id)));
+  const pool = users.filter((u) => u.active && u.takesCall && allServices.some((s) => u.serviceIds.includes(s.id)));
 
   const counts = new Map(pool.map((u) => [u.id, 0]));
   for (const s of weekends) {
@@ -348,6 +356,7 @@ function WeekendTable({
 
   return (
     <>
+      {allServices.length > 1 && <ServiceFilter services={allServices} filter={filter} />}
       <div className="row" style={{ marginBottom: 8 }}>
         <span className="muted small">Weekends assigned:</span>
         {pool.map((u) => (
@@ -374,7 +383,7 @@ function WeekendTable({
           <tbody>
             {fridays.map((fri) => {
               const shifts = services.map((s) => shiftById.get(`${s.id}:weekend:${fri}`));
-              const any = shifts.find(Boolean)!;
+              const any = allServices.map((s) => shiftById.get(`${s.id}:weekend:${fri}`)).find(Boolean)!;
               const away = awayLabels(any);
               return (
                 <tr key={fri} className={any.holiday ? 'holiday' : ''}>

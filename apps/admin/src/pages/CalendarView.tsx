@@ -1,25 +1,7 @@
 import { addDays, DAY_NAMES, dayOfWeek, eachDay, MONTH_NAMES } from '@call-planner/core';
 import { useState } from 'react';
 import type { PeriodData } from './Period';
-
-const HIDDEN_KEY = 'call-planner-calendar-hidden-services';
-
-/** Services hidden on the calendar, remembered per browser. */
-function loadHidden(): Set<string> {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? '[]'));
-  } catch {
-    return new Set();
-  }
-}
-
-function saveHidden(hidden: Set<string>) {
-  try {
-    localStorage.setItem(HIDDEN_KEY, JSON.stringify([...hidden]));
-  } catch {
-    /* storage unavailable: the filter just isn't remembered */
-  }
-}
+import { ServiceFilter, sortServices, type ServiceFilterState } from './ServiceFilter';
 
 type Shift = PeriodData['schedule']['shifts'][number];
 
@@ -49,7 +31,15 @@ const shortName = (name: string) => name.replace(/^Dr\.?\s+/, '').split(' ').at(
  * Month calendar of who covers what each day. Read-only; edit in the
  * Weekdays / Weekends views.
  */
-export function CalendarView({ data, highlight }: { data: PeriodData; highlight: string }) {
+export function CalendarView({
+  data,
+  highlight,
+  filter,
+}: {
+  data: PeriodData;
+  highlight: string;
+  filter: ServiceFilterState;
+}) {
   const { schedule, users } = data;
   const p = schedule.period;
   const months = [...new Set(eachDay(p.startDate, p.endDate).map((d) => d.slice(0, 7)))];
@@ -58,23 +48,13 @@ export function CalendarView({ data, highlight }: { data: PeriodData; highlight:
     return months.includes(today) ? today : months[0];
   });
 
-  const [hidden, setHidden] = useState(loadHidden);
-  const toggle = (id: string) => {
-    const next = new Set(hidden);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setHidden(next);
-    saveHidden(next);
-  };
 
   const name = new Map(users.map((u) => [u.id, u.name]));
   const owner = new Map(schedule.assignments.map((a) => [a.shiftId, a]));
   // Alphabetical, with weekend-block services after the weekday teams (on a
   // Friday the weekend block starts at 5pm, after the day's team call).
-  const inSchedule = schedule.services
-    .filter((s) => schedule.shifts.some((x) => x.serviceId === s.id))
-    .sort((a, b) => Number(a.coversWeekend) - Number(b.coversWeekend) || a.name.localeCompare(b.name));
-  const services = inSchedule.filter((s) => !hidden.has(s.id));
+  const inSchedule = sortServices(schedule.services.filter((s) => schedule.shifts.some((x) => x.serviceId === s.id)));
+  const services = inSchedule.filter((s) => !filter.hidden.has(s.id));
   const svc = new Map(services.map((s) => [s.id, s]));
 
   const who = (s: Shift) => {
@@ -139,24 +119,11 @@ export function CalendarView({ data, highlight }: { data: PeriodData; highlight:
       <h2 className="print-only">
         Call coverage — {MONTH_NAMES[m - 1]} {y}
       </h2>
-      <div className="row small cal-filter" style={{ marginBottom: 8, gap: 14 }}>
-        <span className="muted no-print">Show:</span>
-        {inSchedule.map((s) => (
-          <label key={s.id} className={`check ${hidden.has(s.id) ? 'off' : ''}`}>
-            <input type="checkbox" className="no-print" checked={!hidden.has(s.id)} onChange={() => toggle(s.id)} />
-            <span className="svc-dot" style={{ background: s.color }} />
-            {s.name}
-          </label>
-        ))}
-        {hidden.size > 0 && (
-          <button className="link no-print" onClick={() => (setHidden(new Set()), saveHidden(new Set()))}>
-            Show all
-          </button>
-        )}
+      <ServiceFilter services={inSchedule} filter={filter}>
         <span className="muted">
           <i>Italic</i> = cross-cover
         </span>
-      </div>
+      </ServiceFilter>
       <div className="cal-grid">
         {DAY_NAMES.map((d) => (
           <div key={d} className="cal-head">{d}</div>

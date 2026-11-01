@@ -113,6 +113,16 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .sched-wrap { overflow: auto; max-height: calc(100vh - 260px); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 .sched td, .sched th { padding: 4px 6px; white-space: nowrap; }
 .sched td.date { font-variant-numeric: tabular-nums; }
+/* Keep the date column in view when scrolling sideways. */
+.sched th:first-child, .sched td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); box-shadow: 1px 0 0 var(--border); }
+/* Pin the whole two-row header as one block, so the rows never overlap. */
+/* Separate borders so cell borders move with the pinned header and column. */
+.sched { border-collapse: separate; border-spacing: 0; }
+.sched thead { position: sticky; top: 0; z-index: 2; background: var(--surface-2); box-shadow: 0 1px 0 var(--border); }
+.sched thead tr, .sched thead th { background: var(--surface-2); }
+.sched thead th { position: static; }
+.sched thead th:first-child { position: sticky; left: 0; z-index: 3; background: var(--surface-2); }
+.sched tr.holiday td.date { background: var(--surface); }
 .sched tr.week-start td { border-top: 2px solid var(--border); }
 .sched tr.holiday td.date { color: var(--warn); font-weight: 600; }
 .sched .cell { display: flex; gap: 4px; align-items: center; }
