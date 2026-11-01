@@ -3,7 +3,7 @@ import { useState } from 'react';
 import type { PeriodData } from './Period';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 type Shift = PeriodData['schedule']['shifts'][number];
 
@@ -85,9 +85,9 @@ export function CalendarView({ data, highlight }: { data: PeriodData; highlight:
     return out;
   };
 
-  // Monday-first grid for the month.
+  // Sunday-first grid for the month.
   const first = `${month}-01`;
-  const lead = (dayOfWeek(first) + 6) % 7;
+  const lead = dayOfWeek(first);
   const cells: (string | null)[] = Array(lead).fill(null);
   for (let d = first; d.startsWith(month); d = addDays(d, 1)) cells.push(d);
   while (cells.length % 7) cells.push(null);

@@ -26,7 +26,7 @@ export function MonthCoverage({
 }) {
   const t = useTheme();
   const first = `${month}-01`;
-  const lead = (dayOfWeek(first) + 6) % 7; // Monday-first
+  const lead = dayOfWeek(first); // Sunday-first
   const cells: (string | null)[] = Array(lead).fill(null);
   for (let d = first; d.startsWith(month); d = addDays(d, 1)) cells.push(d);
   while (cells.length % 7) cells.push(null);
@@ -34,7 +34,7 @@ export function MonthCoverage({
   return (
     <View style={[styles.wrap, { backgroundColor: t.card, borderColor: t.border }]}>
       <View style={styles.row}>
-        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
           <Text key={i} style={[styles.cell, styles.dow, { color: t.muted }]}>
             {d}
           </Text>

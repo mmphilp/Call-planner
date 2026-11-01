@@ -17,10 +17,9 @@ function shiftMonth(month: string, delta: number) {
   return new Date(Date.UTC(y, m - 1 + delta, 1)).toISOString().slice(0, 7);
 }
 
-/** Monday on or before the given date. */
-function mondayOf(date: string) {
-  const dow = dayOfWeek(date);
-  return addDays(date, dow === 0 ? -6 : 1 - dow);
+/** Sunday on or before the given date (weeks run Sunday–Saturday). */
+function weekOf(date: string) {
+  return addDays(date, -dayOfWeek(date));
 }
 
 export default function ScheduleScreen() {
@@ -31,7 +30,7 @@ export default function ScheduleScreen() {
   const [periodId, setPeriodId] = useState<string | null>(null);
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [week, setWeek] = useState(mondayOf(todayStr()));
+  const [week, setWeek] = useState(weekOf(todayStr()));
   const [mode, setMode] = useState<'week' | 'month'>('week');
   const [month, setMonth] = useState(todayStr().slice(0, 7));
   const [day, setDay] = useState<string | null>(todayStr());
@@ -51,7 +50,7 @@ export default function ScheduleScreen() {
         setError(null);
         const today = todayStr();
         const anchor = today >= s.period.startDate && today <= s.period.endDate ? today : s.period.startDate;
-        setWeek(mondayOf(anchor));
+        setWeek(weekOf(anchor));
         setMonth(anchor.slice(0, 7));
         setDay(anchor);
       })

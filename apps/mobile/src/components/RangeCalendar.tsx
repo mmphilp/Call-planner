@@ -28,7 +28,7 @@ export function RangeCalendar({
   const [month, setMonth] = useState((start ?? [...(days ?? [])].sort()[0] ?? min).slice(0, 7));
 
   const first = `${month}-01`;
-  const lead = (dayOfWeek(first) + 6) % 7; // Monday-first grid
+  const lead = dayOfWeek(first); // Sunday-first grid
   const cells: (string | null)[] = Array(lead).fill(null);
   for (let d = first; d.startsWith(month); d = addDays(d, 1)) cells.push(d);
   while (cells.length % 7) cells.push(null);
@@ -57,7 +57,7 @@ export function RangeCalendar({
         </Pressable>
       </View>
       <View style={styles.row}>
-        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
           <Text key={i} style={[styles.cell, styles.dow, { color: t.muted }]}>
             {d}
           </Text>
