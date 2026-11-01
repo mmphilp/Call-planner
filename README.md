@@ -19,7 +19,8 @@ Call scheduling for a surgical group: surgeons send requests from an iPhone/Andr
 1. **Set up** (admin): create the half-year, add holidays, check services and surgeons.
 2. **Take requests**: open the period. Surgeons use the app to send *Unavailable*, *Prefer off* or *Would like call* requests for date ranges, optionally limited to days, nights or weekends. There's an optional deadline.
 3. **Build schedule** (admin): close requests, approve/deny them, click **Generate optimized schedule**, then adjust by hand. Any hand-picked assignment is locked, so re-optimizing works around it.
-4. **Publish**: surgeons see their call in the app and can subscribe to it in their phone's calendar.
+4. **Review**: click **Send for review**. Surgeons see the proposed schedule in the app (marked *Proposed*, and not yet in their calendars) and can tap any assignment, theirs or anyone's, to flag it with a note. Flags land on the schedule's *Review* tab and are marked on the Schedule grid; fix the schedule, then mark each flag *Fixed* or *No change needed*, with an optional reply the surgeon sees. Team admins resolve flags on their team's weekday shifts. You can skip this step.
+5. **Publish**: surgeons see their call in the app and can subscribe to it in their phone's calendar.
 
 ### Multi-specialty groups: team admins and routine days
 

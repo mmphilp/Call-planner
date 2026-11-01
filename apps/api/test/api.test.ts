@@ -302,6 +302,59 @@ describe('holidays', () => {
   }, 60_000);
 });
 
+describe('review before publishing', () => {
+  it('shows surgeons the proposed schedule and lets them flag assignments', async () => {
+    const { body: p } = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2 });
+    await call(adminToken, 'PATCH', `/api/periods/${p.id}`, { status: 'closed' });
+    await call(adminToken, 'POST', `/api/periods/${p.id}/optimize`, { seed: 1 });
+
+    // Not out for review yet: surgeons see no assignments and can't flag.
+    expect((await call(surgeonTokens[0], 'GET', `/api/periods/${p.id}/schedule`)).body.assignments).toHaveLength(0);
+    const sched = (await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`)).body;
+    const someone = sched.assignments.find((a: any) => a.userId !== undefined);
+    expect((await call(surgeonTokens[0], 'POST', '/api/flags', { shiftId: someone.shiftId, note: 'x' })).status).toBe(409);
+
+    await call(adminToken, 'PATCH', `/api/periods/${p.id}`, { status: 'review' });
+    expect((await call(surgeonTokens[0], 'GET', `/api/periods/${p.id}/schedule`)).body.assignments.length).toBe(sched.assignments.length);
+    const mine = (await call(surgeonTokens[0], 'GET', '/api/me/shifts?from=2027-07-01')).body;
+    expect(mine.length).toBeGreaterThan(0);
+    expect(mine.every((s: any) => s.proposed)).toBe(true);
+    // Proposed shifts aren't in calendar feeds yet.
+    const me0 = (await call(surgeonTokens[0], 'GET', '/api/me')).body;
+    expect((await app.inject({ url: me0.calendarPath })).body).not.toContain('BEGIN:VEVENT');
+
+    // Flag anyone's assignment, with a note.
+    const weekend = sched.assignments.find((a: any) => a.shiftId.includes(':weekend:'));
+    const f = await call(surgeonTokens[0], 'POST', '/api/flags', { shiftId: weekend.shiftId, note: 'I’m away that weekend' });
+    expect(f.status).toBe(201);
+    expect(f.body).toMatchObject({ status: 'open', note: 'I’m away that weekend', assignedThen: { id: weekend.userId } });
+    expect((await call(surgeonTokens[0], 'POST', '/api/flags', { shiftId: weekend.shiftId, note: 'again' })).status).toBe(409);
+    expect((await call(surgeonTokens[0], 'POST', '/api/flags', { shiftId: weekend.shiftId, note: '  ' })).status).toBe(400);
+
+    // Others don't see it; the admin does, and resolves it.
+    expect((await call(surgeonTokens[1], 'GET', '/api/flags')).body).toHaveLength(0);
+    const all = (await call(adminToken, 'GET', `/api/flags?periodId=${p.id}&all=1`)).body;
+    expect(all).toHaveLength(1);
+    expect(all[0].canResolve).toBe(true);
+    expect((await call(surgeonTokens[1], 'POST', `/api/flags/${all[0].id}/resolve`, { outcome: 'fixed' })).status).toBe(403);
+    const done = await call(adminToken, 'POST', `/api/flags/${all[0].id}/resolve`, { outcome: 'no_change', adminNote: 'Request came in late' });
+    expect(done.body).toMatchObject({ status: 'no_change', adminNote: 'Request came in late', canResolve: false });
+    expect((await call(surgeonTokens[0], 'GET', '/api/flags')).body[0].status).toBe('no_change');
+
+    // A second flag, withdrawn by the surgeon.
+    const day = sched.assignments.find((a: any) => a.shiftId.includes(':day:'));
+    const g = (await call(surgeonTokens[2], 'POST', '/api/flags', { shiftId: day.shiftId, note: 'Wrong person?' })).body;
+    expect((await call(surgeonTokens[1], 'POST', `/api/flags/${g.id}/withdraw`)).status).toBe(404);
+    expect((await call(surgeonTokens[2], 'POST', `/api/flags/${g.id}/withdraw`)).body.status).toBe('withdrawn');
+
+    // The admin can still change the schedule while it's in review, then publish.
+    expect((await call(adminToken, 'POST', `/api/periods/${p.id}/optimize`, { seed: 2, kinds: ['weekend'] })).status).toBe(200);
+    await call(adminToken, 'PATCH', `/api/periods/${p.id}`, { status: 'published' });
+    expect((await call(surgeonTokens[0], 'GET', '/api/me/shifts?from=2027-07-01')).body.every((s: any) => !s.proposed)).toBe(true);
+    expect((await call(surgeonTokens[0], 'POST', '/api/flags', { shiftId: day.shiftId, note: 'late' })).status).toBe(409);
+  }, 60_000);
+});
+
 describe('viewer role and shift trades', () => {
   it('lets a viewer see everything but change nothing', async () => {
     await call(adminToken, 'POST', '/api/users', { email: 'assistant@x.org', name: 'Assistant', role: 'viewer', takesCall: false, password: 'password123' });

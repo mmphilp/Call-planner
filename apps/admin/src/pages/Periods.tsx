@@ -9,6 +9,7 @@ export const STATUS_LABEL: Record<Period['status'], string> = {
   draft: 'Draft',
   open: 'Taking requests',
   closed: 'Building schedule',
+  review: 'In review',
   published: 'Published',
 };
 

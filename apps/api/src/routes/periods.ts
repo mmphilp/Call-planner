@@ -66,7 +66,7 @@ const storeHolidays = (raw: z.infer<typeof holidayList>) => {
 };
 
 const periodPatch = z.object({
-  status: z.enum(['draft', 'open', 'closed', 'published']).optional(),
+  status: z.enum(['draft', 'open', 'closed', 'review', 'published']).optional(),
   requestDeadline: dateStr.nullable().optional(),
   holidays: holidayList.optional(),
   rules: rulesBody.optional(),
@@ -254,7 +254,8 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
       services: listServices(db),
       shifts: nameShifts(listShifts(db, p.id), p.holidays),
       calendarHolidays: calendarHolidays(p.startDate, p.endDate, p.holidays),
-      assignments: isAdmin || p.status === 'published' ? listAssignments(db, p.id) : [],
+      // Surgeons see assignments once the schedule is out for review (proposed) or published.
+      assignments: isAdmin || p.status === 'published' || p.status === 'review' ? listAssignments(db, p.id) : [],
       people,
     };
   });
@@ -451,16 +452,16 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     return csv;
   });
 
-  /** The signed-in surgeon's own shifts in published schedules. */
+  /** The signed-in surgeon's own shifts in published schedules, and proposed ones out for review. */
   app.get('/api/me/shifts', async (req) => {
     const q = parse(z.object({ from: dateStr.optional() }), req.query);
     const services = new Map(listServices(db).map((s) => [s.id, s]));
     const rows = db
       .prepare(
-        `SELECT s.* FROM assignments a
+        `SELECT s.*, p.status AS period_status FROM assignments a
          JOIN shifts s ON s.id = a.shift_id
          JOIN periods p ON p.id = s.period_id
-         WHERE a.user_id = ? AND p.status = 'published' AND s.end >= ?
+         WHERE a.user_id = ? AND p.status IN ('published', 'review') AND s.end >= ?
          ORDER BY s.start`,
       )
       .all(me(req).id, q.from ?? '0000') as any[];
@@ -480,6 +481,8 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
       start: r.start,
       end: r.end,
       holiday: !!r.holiday,
+      // Out for review: not final, and can be flagged rather than traded.
+      proposed: r.period_status === 'review',
     }));
   });
 }

@@ -1,12 +1,13 @@
 import { longDate, longDateRange, mergeRules, standardHolidays, type Rules } from '@call-planner/core';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { del, get, patch, post, type Period, type Report, type RequestRow, type Schedule, type User, type Trade } from '../api';
+import { del, get, patch, post, type Flag, type Period, type Report, type RequestRow, type Schedule, type User, type Trade } from '../api';
 import { useMe } from '../me';
 import { useLoad } from '../useLoad';
 import { FairnessTab } from './FairnessTab';
 import { STATUS_LABEL } from './Periods';
 import { RequestsTab } from './RequestsTab';
+import { ReviewTab } from './ReviewTab';
 import { ScheduleTab } from './ScheduleTab';
 import { SwapsTab } from './SwapsTab';
 
@@ -16,9 +17,10 @@ export interface PeriodData {
   report: Report;
   users: User[];
   trades: Trade[];
+  flags: Flag[];
 }
 
-type Tab = 'overview' | 'requests' | 'schedule' | 'swaps' | 'fairness' | 'rules';
+type Tab = 'overview' | 'requests' | 'schedule' | 'review' | 'swaps' | 'fairness' | 'rules';
 
 export function PeriodPage() {
   const { id } = useParams();
@@ -26,14 +28,15 @@ export function PeriodPage() {
   const [tab, setTab] = useState<Tab>(isSuper ? 'overview' : 'schedule');
   const { data, error, reload } = useLoad<PeriodData>(
     async () => {
-      const [schedule, requests, report, users, trades] = await Promise.all([
+      const [schedule, requests, report, users, trades, flags] = await Promise.all([
         get<Schedule>(`/api/periods/${id}/schedule`),
         get<RequestRow[]>(`/api/requests?periodId=${id}&all=1`),
         get<Report>(`/api/periods/${id}/report`),
         get<User[]>('/api/users'),
         get<Trade[]>(`/api/trades?periodId=${id}&all=1`),
+        get<Flag[]>(`/api/flags?periodId=${id}&all=1`),
       ]);
-      return { schedule, requests, report, users, trades };
+      return { schedule, requests, report, users, trades, flags };
     },
     [id],
   );
@@ -43,6 +46,7 @@ export function PeriodPage() {
   const p = data.schedule.period;
   const pending = data.requests.filter((r) => r.status === 'pending').length;
   const swapsWaiting = data.trades.filter((t) => t.status === 'accepted' && t.canDecide).length;
+  const openFlags = data.flags.filter((f) => f.status === 'open').length;
 
   return (
     <>
@@ -66,13 +70,16 @@ export function PeriodPage() {
             ['overview', 'Overview'],
             ['requests', `Requests${pending ? ` (${pending})` : ''}`],
             ['schedule', 'Schedule'],
+            ['review', `Review${openFlags ? ` (${openFlags})` : ''}`],
             ['swaps', `Swaps${swapsWaiting ? ` (${swapsWaiting})` : ''}`],
             ['fairness', 'Fairness'],
             ['rules', 'Rules'],
           ] as [Tab, string][]
         )
           // Team admins work on their weekday schedule; period setup stays with the overall admin.
-          .filter(([t]) => isSuper || t === 'requests' || t === 'schedule' || t === 'swaps' || t === 'fairness')
+          .filter(([t]) => isSuper || t === 'requests' || t === 'schedule' || t === 'review' || t === 'swaps' || t === 'fairness')
+          // Review appears once a schedule has been out for review.
+          .filter(([t]) => t !== 'review' || p.status === 'review' || data.flags.length > 0)
           .map(([t, label]) => (
           <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
             {label}
@@ -82,6 +89,7 @@ export function PeriodPage() {
       {tab === 'overview' && <Overview data={data} reload={reload} goTo={setTab} />}
       {tab === 'requests' && <RequestsTab data={data} reload={reload} />}
       {tab === 'schedule' && <ScheduleTab data={data} reload={reload} />}
+      {tab === 'review' && <ReviewTab data={data} reload={reload} />}
       {tab === 'swaps' && <SwapsTab data={data} reload={reload} />}
       {tab === 'fairness' && <FairnessTab data={data} />}
       {tab === 'rules' && <RulesTab period={p} reload={reload} />}
@@ -143,7 +151,8 @@ const STEPS: { status: Period['status']; title: string; hint: string }[] = [
   { status: 'draft', title: '1. Set up', hint: 'Add holidays and check services' },
   { status: 'open', title: '2. Take requests', hint: 'Surgeons submit requests in the app' },
   { status: 'closed', title: '3. Build schedule', hint: 'Review requests, optimize, adjust' },
-  { status: 'published', title: '4. Published', hint: 'Surgeons see their call' },
+  { status: 'review', title: '4. Review', hint: 'Surgeons check it and flag problems' },
+  { status: 'published', title: '5. Published', hint: 'Final: surgeons see their call' },
 ];
 
 function Overview({ data, reload, goTo }: { data: PeriodData; reload: () => void; goTo: (t: Tab) => void }) {
@@ -154,6 +163,16 @@ function Overview({ data, reload, goTo }: { data: PeriodData; reload: () => void
   const total = data.schedule.shifts.filter((s) => !s.coveredBy).length;
   const pending = data.requests.filter((r) => r.status === 'pending').length;
   const ruleBreaks = data.report.violations.filter((v) => v.type !== 'unassigned').length;
+  const openFlags = data.flags.filter((f) => f.status === 'open').length;
+  const publish = () => {
+    const problems = [
+      total - assigned && `${total - assigned} shift${total - assigned === 1 ? ' is' : 's are'} unfilled`,
+      ruleBreaks && `${ruleBreaks} rule problem${ruleBreaks === 1 ? ' remains' : 's remain'}`,
+      openFlags && `${openFlags} flag${openFlags === 1 ? '' : 's'} from surgeons ${openFlags === 1 ? 'is' : 'are'} still open`,
+    ].filter(Boolean);
+    const warn = problems.length ? `${problems.join(', ')}. Publish anyway?` : 'Publish this schedule as final?';
+    if (confirm(warn)) setStatus('published')();
+  };
 
   const run = (fn: () => Promise<unknown>) => async () => {
     setError(null);
@@ -184,13 +203,24 @@ function Overview({ data, reload, goTo }: { data: PeriodData; reload: () => void
           {p.status === 'open' && <button className="primary" onClick={setStatus('closed')}>Close requests &amp; start scheduling</button>}
           {p.status === 'closed' && (
             <>
-              <button className="primary" disabled={assigned === 0} onClick={() => {
-                const warn = total - assigned || ruleBreaks
-                  ? `${total - assigned} shifts are unfilled and ${ruleBreaks} rule problems remain. Publish anyway?`
-                  : 'Publish this schedule to all surgeons?';
-                if (confirm(warn)) setStatus('published')();
-              }}>Publish schedule</button>
+              <button
+                className="primary"
+                disabled={assigned === 0}
+                onClick={() => confirm('Send this proposed schedule to surgeons for review? They’ll see it in the app and can flag assignments. It won’t go into their calendars until you publish.') && setStatus('review')()}
+              >
+                Send for review
+              </button>
+              <button disabled={assigned === 0} onClick={publish}>Skip review and publish</button>
               <button onClick={setStatus('open')}>Reopen requests</button>
+            </>
+          )}
+          {p.status === 'review' && (
+            <>
+              <button className="primary" onClick={publish}>Publish final schedule</button>
+              <button onClick={() => goTo('review')}>See flags{openFlags ? ` (${openFlags} open)` : ''}</button>
+              <button onClick={() => confirm('Take the proposed schedule back? Surgeons will no longer see it.') && setStatus('closed')()}>
+                Withdraw from review
+              </button>
             </>
           )}
           {p.status === 'published' && <button onClick={setStatus('closed')}>Unpublish to make changes</button>}
@@ -209,6 +239,14 @@ function Overview({ data, reload, goTo }: { data: PeriodData; reload: () => void
             <tbody>
               <tr><td>Shifts filled</td><td className="num">{assigned} / {total}</td></tr>
               <tr><td>Pending requests</td><td className="num">{pending ? <button className="link" onClick={() => goTo('requests')}>{pending}</button> : 0}</td></tr>
+              {(p.status === 'review' || data.flags.length > 0) && (
+                <tr>
+                  <td>Open flags from surgeons</td>
+                  <td className="num">
+                    {openFlags ? <button className="link" onClick={() => goTo('review')}>{openFlags}</button> : <span className="badge ok">None</span>}
+                  </td>
+                </tr>
+              )}
               <tr><td>Rule problems</td><td className="num">{ruleBreaks ? <span className="badge bad">{ruleBreaks}</span> : <span className="badge ok">None</span>}</td></tr>
               <tr><td>Dates</td><td className="num">{longDateRange(p.startDate, p.endDate, { year: true })}</td></tr>
             </tbody>

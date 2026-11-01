@@ -10,7 +10,7 @@ import type {
 } from '@call-planner/core';
 
 export type Role = 'admin' | 'surgeon' | 'viewer';
-export type PeriodStatus = 'draft' | 'open' | 'closed' | 'published';
+export type PeriodStatus = 'draft' | 'open' | 'closed' | 'review' | 'published';
 
 export interface User {
   id: string;
@@ -90,6 +90,24 @@ export interface Trade {
   canDecide: boolean;
   /** Rule problems approving would add. */
   issues: string[];
+}
+
+/** A surgeon's flag on an assignment in a schedule out for review. */
+export interface Flag {
+  id: string;
+  periodId: string;
+  periodLabel: string;
+  shift: TradeShift;
+  from: { id: string; name: string };
+  /** Who was on the shift when it was flagged, and who is on it now. */
+  assignedThen: { id: string; name: string } | null;
+  assignedNow: { id: string; name: string } | null;
+  note: string;
+  status: 'open' | 'fixed' | 'no_change' | 'withdrawn';
+  adminNote: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  canResolve: boolean;
 }
 
 export interface Report {

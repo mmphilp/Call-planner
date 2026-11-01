@@ -68,7 +68,8 @@ CREATE TABLE IF NOT EXISTS periods (
   half INTEGER NOT NULL CHECK (half IN (1, 2)),
   start_date TEXT NOT NULL,
   end_date TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'open', 'closed', 'published')),
+  -- 'review': the proposed schedule is out for surgeons to check and flag problems.
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'open', 'closed', 'review', 'published')),
   request_deadline TEXT,
   holidays_json TEXT NOT NULL DEFAULT '[]',
   rules_json TEXT NOT NULL DEFAULT '{}',
@@ -134,6 +135,22 @@ CREATE TABLE IF NOT EXISTS requests (
   decided_at TEXT
 );
 CREATE INDEX IF NOT EXISTS requests_period ON requests(period_id, user_id);
+
+-- A surgeon's note that an assignment in a proposed schedule may be wrong.
+CREATE TABLE IF NOT EXISTS flags (
+  id TEXT PRIMARY KEY,
+  period_id TEXT NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+  shift_id TEXT NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  -- Who was on the shift when it was flagged.
+  assigned_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  note TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'fixed', 'no_change', 'withdrawn')),
+  admin_note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS flags_period ON flags(period_id, status);
 `;
 
 export function openDb(path: string): Db {
@@ -157,6 +174,22 @@ function migrate(db: Db) {
       );
       db.exec('DROP TABLE users');
       db.exec('ALTER TABLE users_new RENAME TO users');
+    });
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+  // The 'review' status was added later; rebuild periods the same way.
+  const periodsSql = (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'periods'").get() as { sql: string }).sql;
+  if (!periodsSql.includes("'review'")) {
+    db.exec('PRAGMA foreign_keys = OFF');
+    transaction(db, () => {
+      db.exec(
+        periodsSql
+          .replace(/^CREATE TABLE\s+"?periods"?/, 'CREATE TABLE periods_new')
+          .replace("'closed', 'published'", "'closed', 'review', 'published'"),
+      );
+      db.exec('INSERT INTO periods_new SELECT * FROM periods');
+      db.exec('DROP TABLE periods');
+      db.exec('ALTER TABLE periods_new RENAME TO periods');
     });
     db.exec('PRAGMA foreign_keys = ON');
   }

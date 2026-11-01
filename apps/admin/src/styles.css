@@ -90,7 +90,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--muted); }
 .badge.open, .badge.approved, .badge.ok { background: var(--ok-bg); color: var(--ok); }
-.badge.closed, .badge.pending, .badge.warn { background: var(--warn-bg); color: var(--warn); }
+.badge.closed, .badge.review, .badge.pending, .badge.warn { background: var(--warn-bg); color: var(--warn); }
 .badge.published { background: var(--accent); color: var(--accent-text); }
 .badge.denied, .badge.bad { background: var(--bad-bg); color: var(--bad); }
 
@@ -187,3 +187,9 @@ dialog::backdrop { background: rgb(0 0 0 / 0.4); }
 .cal-filter label.check { cursor: pointer; }
 .cal-filter label.check.off { opacity: 0.45; }
 @media print { .cal-filter label.check.off { display: none; } }
+
+/* Review flags */
+.cell.flagged select { box-shadow: inset 4px 0 0 var(--warn); }
+.flag-card { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.flag-card:last-child { border-bottom: none; }
+.flag-card textarea { width: 100%; min-height: 54px; font: inherit; }

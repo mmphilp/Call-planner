@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
 import { Pressable, View } from 'react-native';
 import { Badge, Button, Card, Empty, ErrorText, Screen, SectionHeader, T, useApi } from '@/components/ui';
-import { api, type CallRequest, type Period, type Trade } from '@/lib/api';
+import { api, type CallRequest, type Flag, type Period, type Trade } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { confirmAsync, notify } from '@/lib/dialogs';
+import { FLAG_STATUS } from '@/lib/flags';
 import { dateRange, kindLabel, longDate, todayStr } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
@@ -23,12 +24,13 @@ export function acceptingRequests(p: Period) {
 export default function RequestsScreen() {
   const t = useTheme();
   const { data, error, refreshing, refresh, reload } = useApi(async () => {
-    const [periods, requests, trades] = await Promise.all([
+    const [periods, requests, trades, flags] = await Promise.all([
       api<Period[]>('GET', '/api/periods'),
       api<CallRequest[]>('GET', '/api/requests'),
       api<Trade[]>('GET', '/api/trades'),
+      api<Flag[]>('GET', '/api/flags'),
     ]);
-    return { periods, requests, trades };
+    return { periods, requests, trades, flags };
   });
 
   const open = data?.periods.filter(acceptingRequests) ?? [];
@@ -46,6 +48,7 @@ export default function RequestsScreen() {
   return (
     <Screen title="Requests" subtitle="Time off, call preferences and swaps" refreshing={refreshing} onRefresh={refresh}>
       <ErrorText message={error} />
+      {data && <Flags flags={data.flags} periods={data.periods} />}
       {data && <Swaps trades={data.trades} reload={reload} />}
       {open.map((p) => (
         <Card key={p.id} style={{ gap: 10 }}>
@@ -90,6 +93,38 @@ export default function RequestsScreen() {
         <Empty title="No requests yet" body="Ask for vacation, conferences or weekends you’d like off — or call you’d like to pick up." />
       )}
     </Screen>
+  );
+}
+
+/** Flags you sent on proposed schedules, and what the scheduler did. */
+function Flags({ flags, periods }: { flags: Flag[]; periods: Period[] }) {
+  // Keep flags from schedules still in review, plus any the scheduler answered.
+  const inReview = new Set(periods.filter((p) => p.status === 'review').map((p) => p.id));
+  const shown = flags.filter((f) => inReview.has(f.periodId) || (f.status !== 'withdrawn' && f.status !== 'open'));
+  if (!shown.length) return null;
+  return (
+    <View style={{ gap: 8 }}>
+      <SectionHeader>Flags you’ve sent</SectionHeader>
+      {shown.map((f) => (
+        <Pressable
+          key={f.id}
+          onPress={() => inReview.has(f.periodId) && router.push({ pathname: '/flag', params: { shiftId: f.shift.id, periodId: f.periodId } })}
+        >
+          <Card style={{ gap: 4 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <T bold style={{ flex: 1 }}>{shiftText(f.shift)}</T>
+              <Badge label={FLAG_STATUS[f.status].label} tone={FLAG_STATUS[f.status].tone} />
+            </View>
+            <T size={13}>
+              On call: {f.assignedThen?.name ?? 'nobody'}
+              {f.assignedNow?.id !== f.assignedThen?.id ? ` → now ${f.assignedNow?.name ?? 'nobody'}` : ''}
+            </T>
+            <T muted size={13}>“{f.note}”</T>
+            {f.adminNote ? <T size={13}>Scheduler: {f.adminNote}</T> : null}
+          </Card>
+        </Pressable>
+      ))}
+    </View>
   );
 }
 

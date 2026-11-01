@@ -9,6 +9,7 @@ import { HttpError } from './http';
 import { getUser } from './repo';
 import { calendarRoutes } from './routes/calendar';
 import { peopleRoutes } from './routes/people';
+import { flagRoutes } from './routes/flags';
 import { periodRoutes } from './routes/periods';
 import { requestRoutes } from './routes/requests';
 import { routineRoutes } from './routes/routine';
@@ -74,6 +75,7 @@ export async function buildApp(opts: AppOptions) {
   requestRoutes(app, db);
   routineRoutes(app, db);
   tradeRoutes(app, db);
+  flagRoutes(app, db);
   calendarRoutes(app, db);
 
   const hasBuild = (dir?: string): dir is string => !!dir && existsSync(resolve(dir, 'index.html'));

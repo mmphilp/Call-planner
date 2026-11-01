@@ -27,7 +27,8 @@ export interface Period {
   label: string;
   startDate: string;
   endDate: string;
-  status: 'draft' | 'open' | 'closed' | 'published';
+  /** 'review': a proposed schedule surgeons can check and flag before it's final. */
+  status: 'draft' | 'open' | 'closed' | 'review' | 'published';
   requestDeadline: string | null;
   /** Holiday markers: actual dates, and the hospital's observed days when they differ. */
   calendarHolidays: { date: string; name: string; observed: boolean }[];
@@ -45,6 +46,8 @@ export interface MyShift {
   end: string;
   holiday: boolean;
   holidayName?: string;
+  /** In a proposed schedule out for review: not final yet. */
+  proposed?: boolean;
 }
 
 export interface Shift {
@@ -89,6 +92,21 @@ export interface Trade {
   theirShift?: TradeShift;
   from: { id: string; name: string };
   to: { id: string; name: string } | null;
+}
+
+/** A surgeon's flag on an assignment in a proposed schedule. */
+export interface Flag {
+  id: string;
+  periodId: string;
+  periodLabel: string;
+  shift: TradeShift;
+  from: { id: string; name: string };
+  assignedThen: { id: string; name: string } | null;
+  assignedNow: { id: string; name: string } | null;
+  note: string;
+  status: 'open' | 'fixed' | 'no_change' | 'withdrawn';
+  adminNote: string;
+  createdAt: string;
 }
 
 export interface CallRequest {

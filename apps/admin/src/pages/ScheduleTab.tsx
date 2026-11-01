@@ -156,11 +156,18 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
       if (rs.some((r) => r.type === 'prefer_on')) return ' — wants this';
       return '';
     };
-    const classes = ['cell', shift.kind === 'weekend' && 'weekend', issues && 'violation', !a && 'empty', a?.source === 'backup' && 'cover']
+    const flagged = data.flags.filter((f) => f.status === 'open' && f.shift.id === shift.id);
+    const classes = ['cell', shift.kind === 'weekend' && 'weekend', issues && 'violation', !a && 'empty', a?.source === 'backup' && 'cover', flagged.length && 'flagged']
       .filter(Boolean)
       .join(' ');
     return (
-      <div className={classes} title={issues?.join('\n') ?? (shift.kind === 'weekend' ? longSpan(shift.start, shift.end) : undefined)}>
+      <div
+        className={classes}
+        title={
+          [...(issues ?? []), ...flagged.map((f) => `Flagged by ${f.from.name}: ${f.note}`)].join('\n') ||
+          (shift.kind === 'weekend' ? longSpan(shift.start, shift.end) : undefined)
+        }
+      >
         <select
           value={a?.userId ?? ''}
           disabled={!canEdit}

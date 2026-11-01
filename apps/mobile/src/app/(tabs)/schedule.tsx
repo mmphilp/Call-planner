@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, View } from 'react-native';
 import { MonthCoverage } from '@/components/MonthCoverage';
-import { Card, Chip, Empty, ErrorText, Screen, SectionHeader, T, useApi } from '@/components/ui';
-import { api, type Period, type Schedule } from '@/lib/api';
+import { Badge, Card, Chip, Empty, ErrorText, Screen, SectionHeader, T, useApi } from '@/components/ui';
+import { api, type Flag, type Period, type Schedule } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { addDays, dayOfWeek, holidayMap, kindLabel, longDate, monthDay, monthLabel, nowLocal, shiftSpan, todayStr } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
@@ -41,7 +42,8 @@ export default function ScheduleScreen() {
   const { user } = useAuth();
   const t = useTheme();
   const periods = useApi(() => api<Period[]>('GET', '/api/periods'));
-  const published = useMemo(() => (periods.data ?? []).filter((p) => p.status === 'published'), [periods.data]);
+  // Published schedules, and proposed ones out for review.
+  const published = useMemo(() => (periods.data ?? []).filter((p) => p.status === 'published' || p.status === 'review'), [periods.data]);
   const [periodId, setPeriodId] = useState<string | null>(null);
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,12 +52,30 @@ export default function ScheduleScreen() {
   const [month, setMonth] = useState(todayStr().slice(0, 7));
   const [day, setDay] = useState<string | null>(todayStr());
 
-  // Default to the period that contains today, else the latest published one.
+  // Default to the published period that contains today, else one out for review, else the latest.
   useEffect(() => {
     if (periodId || !published.length) return;
     const today = todayStr();
-    setPeriodId((published.find((p) => p.startDate <= today && today <= p.endDate) ?? published[0]).id);
+    setPeriodId(
+      (
+        published.find((p) => p.status === 'published' && p.startDate <= today && today <= p.endDate) ??
+        published.find((p) => p.status === 'review') ??
+        published[0]
+      ).id,
+    );
   }, [published, periodId]);
+
+  // My flags on a proposed schedule, refreshed when coming back from flagging.
+  const inReview = schedule?.period.status === 'review';
+  const canFlag = inReview && user?.role !== 'viewer';
+  const [flags, setFlags] = useState<Flag[]>([]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!canFlag || !periodId) return setFlags([]);
+      api<Flag[]>('GET', `/api/flags?periodId=${periodId}`).then(setFlags).catch(() => {});
+    }, [canFlag, periodId]),
+  );
+  const flagged = useMemo(() => new Set(flags.filter((f) => f.status === 'open').map((f) => f.shift.id)), [flags]);
 
   useEffect(() => {
     if (!periodId) return;
@@ -99,6 +119,8 @@ export default function ScheduleScreen() {
   const line = (s: Schedule['shifts'][number], withTimes = true) => (
     <ShiftLine
       key={s.id}
+      flagged={flagged.has(s.id)}
+      onPress={canFlag ? () => router.push({ pathname: '/flag', params: { shiftId: s.id, periodId: schedule!.period.id } }) : undefined}
       label={`${services.get(s.serviceId)?.name} · ${kindLabel(s)}`}
       sub={withTimes ? shiftSpan(s) : undefined}
       color={services.get(s.serviceId)?.color}
@@ -116,10 +138,20 @@ export default function ScheduleScreen() {
       {periods.data && !published.length && (
         <Empty title="No published schedule yet" body="You’ll see the full group schedule here once it’s published." />
       )}
+      {inReview && (
+        <Card style={{ gap: 4, borderColor: t.warn }}>
+          <T bold>Proposed schedule — not final</T>
+          <T muted size={13}>
+            {canFlag
+              ? 'The scheduler is asking everyone to check it. Tap any assignment that looks wrong to flag it.'
+              : 'Surgeons are checking this proposed schedule before it’s published.'}
+          </T>
+        </Card>
+      )}
       {published.length > 1 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
           {published.map((p) => (
-            <Chip key={p.id} label={p.label} selected={p.id === periodId} onPress={() => setPeriodId(p.id)} />
+            <Chip key={p.id} label={p.status === 'review' ? `${p.label} (proposed)` : p.label} selected={p.id === periodId} onPress={() => setPeriodId(p.id)} />
           ))}
         </ScrollView>
       )}
@@ -224,7 +256,12 @@ function ShiftLine({
   person,
   locum,
   me,
+  flagged,
+  onPress,
 }: {
+  flagged?: boolean;
+  /** Set on a proposed schedule: tap to flag this assignment. */
+  onPress?: () => void;
   label: string;
   sub?: string;
   color?: string;
@@ -234,7 +271,12 @@ function ShiftLine({
 }) {
   const t = useTheme();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+    <Pressable
+      disabled={!onPress}
+      onPress={onPress}
+      accessibilityHint={onPress ? 'Flag a problem with this assignment' : undefined}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+    >
       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color ?? t.accent }} />
       <View style={{ flex: 1 }}>
         <T size={13} muted>
@@ -246,11 +288,14 @@ function ShiftLine({
           {me ? ' (you)' : ''}
         </T>
       </View>
-      {person?.phone && !me ? (
+      {flagged && <Badge label="Flagged" tone="warn" />}
+      {onPress ? (
+        <T muted size={18}>›</T>
+      ) : person?.phone && !me ? (
         <Pressable onPress={() => Linking.openURL(`tel:${person.phone}`)} hitSlop={8} accessibilityLabel={`Call ${person.name}`}>
           <T bold style={{ color: t.accent }}>Call</T>
         </Pressable>
       ) : null}
-    </View>
+    </Pressable>
   );
 }
