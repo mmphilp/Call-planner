@@ -13,7 +13,9 @@ const USER_COLUMNS = `
   active INTEGER NOT NULL DEFAULT 1,
   takes_call INTEGER NOT NULL DEFAULT 1,
   phone TEXT,
-  calendar_token TEXT NOT NULL UNIQUE
+  calendar_token TEXT NOT NULL UNIQUE,
+  -- Set for new accounts and admin-set passwords: change it before anything else.
+  must_change_password INTEGER NOT NULL DEFAULT 0
 );`;
 
 const SCHEMA = `
@@ -254,6 +256,10 @@ function migrate(db: Db) {
       db.exec('ALTER TABLE periods_new RENAME TO periods');
     });
     db.exec('PRAGMA foreign_keys = ON');
+  }
+  const userCols = (db.prepare('PRAGMA table_info(users)').all() as { name: string }[]).map((c) => c.name);
+  if (!userCols.includes('must_change_password')) {
+    db.exec('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0');
   }
   const shiftCols = (db.prepare('PRAGMA table_info(shifts)').all() as { name: string }[]).map((c) => c.name);
   if (!shiftCols.includes('covered_by')) db.exec('ALTER TABLE shifts ADD COLUMN covered_by TEXT');

@@ -32,12 +32,14 @@ beforeEach(async () => {
   await call(adminToken, 'POST', '/api/services', { name: 'Hand', coversWeekdayDay: true, coversWeekdayNight: false, coversWeekend: false });
   surgeonTokens = [];
   for (let i = 1; i <= 8; i++) {
-    await call(adminToken, 'POST', '/api/users', {
+    const { body: u } = await call(adminToken, 'POST', '/api/users', {
       email: `s${i}@x.org`,
       name: `Surgeon ${i}`,
       password: 'password123',
       serviceIds: i <= 4 ? ['general', 'hand'] : ['general'],
     });
+    // New accounts must choose their own password first; skip that for these test surgeons.
+    await call(adminToken, 'PATCH', `/api/users/${u.id}`, { mustChangePassword: false });
     surgeonTokens.push(await login(`s${i}@x.org`));
   }
 });
@@ -73,6 +75,38 @@ describe('auth', () => {
   it('keeps admin endpoints away from surgeons', async () => {
     expect((await call(surgeonTokens[0], 'GET', '/api/users')).status).toBe(403);
     expect((await call(surgeonTokens[0], 'POST', '/api/periods', { year: 2027, half: 1 })).status).toBe(403);
+  });
+});
+
+describe('password changes', () => {
+  it('makes new accounts and reset passwords change at first sign-in, enforced by the server', async () => {
+    const { body: u } = await call(adminToken, 'POST', '/api/users', { email: 'new@x.org', name: 'New Surgeon', password: 'temporary1' });
+    expect(u.mustChangePassword).toBe(true);
+    let token = (await call(null, 'POST', '/api/auth/login', { email: 'new@x.org', password: 'temporary1' })).body.token;
+    // Only who-am-I and changing the password work until then.
+    expect((await call(token, 'GET', '/api/me')).body.mustChangePassword).toBe(true);
+    expect((await call(token, 'GET', '/api/periods')).status).toBe(403);
+    expect((await call(token, 'POST', '/api/me/password', { current: 'wrong', next: 'mine-now-1' })).status).toBe(400);
+    expect((await call(token, 'POST', '/api/me/password', { current: 'temporary1', next: 'temporary1' })).status).toBe(400);
+    expect((await call(token, 'POST', '/api/me/password', { current: 'temporary1', next: 'short' })).status).toBe(400);
+    const changed = await call(token, 'POST', '/api/me/password', { current: 'temporary1', next: 'mine-now-1' });
+    expect(changed.body.mustChangePassword).toBe(false);
+    expect((await call(token, 'GET', '/api/periods')).status).toBe(200);
+
+    // An admin resetting someone's password makes it temporary again.
+    await call(adminToken, 'PATCH', `/api/users/${u.id}`, { password: 'reset-pass-1' });
+    token = (await call(null, 'POST', '/api/auth/login', { email: 'new@x.org', password: 'reset-pass-1' })).body.token;
+    expect((await call(token, 'GET', '/api/periods')).status).toBe(403);
+
+    // Flag everyone except yourself (e.g. after testing with shared passwords).
+    expect((await call(surgeonTokens[0], 'POST', '/api/users/require-password-change')).status).toBe(403);
+    const flagged = (await call(adminToken, 'POST', '/api/users/require-password-change')).body.flagged;
+    expect(flagged).toBe(9); // 8 surgeons + the new one
+    expect((await call(surgeonTokens[0], 'GET', '/api/periods')).status).toBe(403);
+    expect((await call(adminToken, 'GET', '/api/periods')).status).toBe(200);
+    // …or one person, and clear it again.
+    await call(adminToken, 'PATCH', `/api/users/${u.id}`, { mustChangePassword: false });
+    expect((await call(token, 'GET', '/api/periods')).status).toBe(200);
   });
 });
 
@@ -521,7 +555,8 @@ describe('per-service publishing and sign-offs', () => {
 
 describe('viewer role and shift trades', () => {
   it('lets a viewer see everything but change nothing', async () => {
-    await call(adminToken, 'POST', '/api/users', { email: 'assistant@x.org', name: 'Assistant', role: 'viewer', takesCall: false, password: 'password123' });
+    const { body: assistant } = await call(adminToken, 'POST', '/api/users', { email: 'assistant@x.org', name: 'Assistant', role: 'viewer', takesCall: false, password: 'password123' });
+    await call(adminToken, 'PATCH', `/api/users/${assistant.id}`, { mustChangePassword: false });
     const viewer = await login('assistant@x.org');
     const { body: p } = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2 });
     await call(adminToken, 'POST', `/api/periods/${p.id}/optimize`, { seed: 1, kinds: ['weekend'] });

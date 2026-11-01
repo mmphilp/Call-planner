@@ -22,8 +22,12 @@ const userFields = z.object({
   /** Services whose weekday call this person manages. */
   adminServiceIds: z.array(z.string()),
   password: z.string().min(8),
+  /** Must choose a new password at next sign-in. */
+  mustChangePassword: z.boolean(),
 });
 const userBody = userFields.extend({
+  // Internal default (seed data, the first admin); accounts created in the console always must change it.
+  mustChangePassword: userFields.shape.mustChangePassword.default(false),
   role: userFields.shape.role.default('surgeon'),
   fte: userFields.shape.fte.default(1),
   active: userFields.shape.active.default(true),
@@ -61,8 +65,8 @@ export function createUser(db: Db, input: z.input<typeof userBody>) {
   const id = randomUUID();
   transaction(db, () => {
     db.prepare(
-      `INSERT INTO users (id, email, name, password_hash, role, fte, active, takes_call, phone, calendar_token)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO users (id, email, name, password_hash, role, fte, active, takes_call, phone, calendar_token, must_change_password)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       u.email,
@@ -74,6 +78,7 @@ export function createUser(db: Db, input: z.input<typeof userBody>) {
       u.takesCall ? 1 : 0,
       u.phone ?? null,
       newCalendarToken(),
+      u.mustChangePassword ? 1 : 0,
     );
     setUserServices(db, id, u.serviceIds);
     setUserAdminServices(db, id, u.adminServiceIds);
@@ -105,12 +110,24 @@ export function peopleRoutes(app: FastifyInstance, db: Db) {
     return { ...me(req), calendarPath: `/cal/${row.calendar_token}.ics` };
   });
 
+  /** Change your own password (also clears "must change password"). */
   app.post('/api/me/password', async (req) => {
-    const body = parse(z.object({ current: z.string(), next: z.string().min(8) }), req.body);
+    const body = parse(
+      z.object({ current: z.string(), next: z.string().min(8, 'New password: at least 8 characters') }),
+      req.body,
+    );
     const row = getUserRowByEmail(db, me(req).email)!;
     if (!verifyPassword(body.current, row.password_hash)) throw httpError(400, 'Current password is wrong');
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(body.next), row.id);
-    return { ok: true };
+    if (body.current === body.next) throw httpError(400, 'Choose a new password, different from the current one');
+    db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?').run(hashPassword(body.next), row.id);
+    return getUser(db, row.id);
+  });
+
+  /** Make everyone (except you) choose a new password at their next sign-in. */
+  app.post('/api/users/require-password-change', async (req) => {
+    requireAdmin(req);
+    const r = db.prepare('UPDATE users SET must_change_password = 1 WHERE id != ? AND active = 1').run(me(req).id);
+    return { flagged: Number(r.changes) };
   });
 
   // Team admins need the roster to fill their team's shifts.
@@ -124,7 +141,8 @@ export function peopleRoutes(app: FastifyInstance, db: Db) {
     const body = parse(userBody, req.body);
     if (getUserRowByEmail(db, body.email)) throw httpError(409, 'A user with that email already exists');
     reply.code(201);
-    return createUser(db, body);
+    // The admin picked a temporary password, so the person chooses their own at first sign-in.
+    return createUser(db, { ...body, mustChangePassword: true });
   });
 
   app.patch<{ Params: { id: string } }>('/api/users/:id', async (req) => {
@@ -145,6 +163,13 @@ export function peopleRoutes(app: FastifyInstance, db: Db) {
         takes_call: body.takesCall === undefined ? undefined : body.takesCall ? 1 : 0,
         phone: body.phone,
         password_hash: body.password ? hashPassword(body.password) : undefined,
+        // A password the admin set for someone else is temporary; it can also be flagged directly.
+        must_change_password:
+          body.mustChangePassword !== undefined
+            ? +body.mustChangePassword
+            : body.password && req.params.id !== me(req).id
+              ? 1
+              : undefined,
       };
       for (const [col, val] of Object.entries(cols)) {
         if (val !== undefined) db.prepare(`UPDATE users SET ${col} = ? WHERE id = ?`).run(val as any, req.params.id);

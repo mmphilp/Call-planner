@@ -1,11 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { api, setUnauthorizedHandler, tokenStore, type User } from './api';
+import { api, setPasswordRequiredHandler, setUnauthorizedHandler, tokenStore, type User } from './api';
 
 interface AuthState {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Replace the signed-in user (e.g. after changing your password). */
+  setUser: (u: User) => void;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -21,6 +23,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setUnauthorizedHandler(() => void signOut());
+    // Flagged to change password mid-session: reload who we are, which shows that screen.
+    setPasswordRequiredHandler(() => void api<User>('GET', '/api/me').then(setUser).catch(() => {}));
     (async () => {
       try {
         if (await tokenStore.get()) setUser(await api<User>('GET', '/api/me'));
@@ -38,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await api<User>('GET', '/api/me'));
   }, []);
 
-  const value = useMemo(() => ({ user, loading, signIn, signOut }), [user, loading, signIn, signOut]);
+  const value = useMemo(() => ({ user, loading, signIn, signOut, setUser }), [user, loading, signIn, signOut]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

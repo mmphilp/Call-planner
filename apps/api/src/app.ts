@@ -28,6 +28,9 @@ declare module '@fastify/jwt' {
   }
 }
 
+/** The 403 message when a password change is required; the apps watch for it. */
+export const PASSWORD_CHANGE_REQUIRED = 'Please choose a new password first';
+
 /** The release version, from the root package.json. */
 const VERSION: string = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')).version;
 
@@ -62,6 +65,10 @@ export async function buildApp(opts: AppOptions) {
     }
     const user = getUser(db, req.user.sub);
     if (!user || !user.active) throw new HttpError(401, 'Please sign in');
+    // Until a required password change is done, only allow who-am-I and changing it.
+    if (user.mustChangePassword && !(req.url === '/api/me' || req.url.startsWith('/api/me/password'))) {
+      throw new HttpError(403, PASSWORD_CHANGE_REQUIRED);
+    }
     req.currentUser = user;
   });
 

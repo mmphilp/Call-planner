@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+- **Password changes at first sign-in.** Accounts created in the console start with a temporary password: the person must choose their own the first time they sign in (app or console). The same applies when the admin resets someone's password.
+- **Require a password change** for one person (checkbox when editing them on the Surgeons page) or for everyone except yourself (**Require everyone to change password**). Enforced by the server: until it's changed, nothing else works.
+- **Change password** for everyone: Profile in the app, and the sidebar in the console.
+
 ## 1.0.0 — first production release
 
 Call scheduling for a multi-specialty surgical group: a web/phone app for surgeons and an admin console, served from one address.

@@ -17,6 +17,8 @@ export default function TabsLayout() {
     );
   }
   if (!user) return <Redirect href="/login" />;
+  // A temporary password must be changed before anything else.
+  if (user.mustChangePassword) return <Redirect href="/change-password" />;
 
   return (
     <NativeTabs backgroundColor={t.card} indicatorColor={t.bg} labelStyle={{ selected: { color: t.accent } }}>

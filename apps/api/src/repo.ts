@@ -29,6 +29,8 @@ export interface User {
   serviceIds: string[];
   /** Services whose weekday call this user manages (team admin). */
   adminServiceIds: string[];
+  /** Must choose a new password before using the app (new account, or the admin set or reset it). */
+  mustChangePassword: boolean;
 }
 
 export interface Period {
@@ -78,6 +80,7 @@ function toUser(db: Db, r: Row): User {
     phone: r.phone ?? null,
     serviceIds,
     adminServiceIds,
+    mustChangePassword: !!r.must_change_password,
   };
 }
 

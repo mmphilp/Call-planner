@@ -24,6 +24,8 @@ export interface User {
   serviceIds: string[];
   /** Services whose weekday call this user manages (team admin). */
   adminServiceIds: string[];
+  /** Must choose a new password before using the app or console. */
+  mustChangePassword?: boolean;
 }
 
 export interface Period {
@@ -193,6 +195,8 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
     location.href = import.meta.env.BASE_URL;
   }
   const data = res.headers.get('content-type')?.includes('json') ? await res.json() : await res.text();
+  // Asked to choose a new password mid-session (e.g. the admin flagged everyone): reload to show that screen.
+  if (res.status === 403 && (data as { error?: string })?.error === 'Please choose a new password first') location.reload();
   if (!res.ok) throw new Error((data as { error?: string })?.error ?? `Request failed (${res.status})`);
   return data as T;
 }

@@ -1,4 +1,5 @@
 import * as Clipboard from 'expo-clipboard';
+import { router } from 'expo-router';
 import { Linking, View } from 'react-native';
 import { AdminCard } from '@/components/AdminCard';
 import { Button, Card, Screen, SectionHeader, T } from '@/components/ui';
@@ -51,7 +52,8 @@ export default function ProfileScreen() {
         />
       </Card>
 
-      <View style={{ marginTop: 16 }}>
+      <View style={{ marginTop: 16, gap: 10 }}>
+        <Button label="Change password" variant="secondary" onPress={() => router.push('/change-password')} />
         <Button label="Sign out" variant="danger" onPress={signOut} />
       </View>
     </Screen>

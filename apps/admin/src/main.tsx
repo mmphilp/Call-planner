@@ -2,6 +2,7 @@ import { StrictMode, useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom';
 import { auth, get, type User } from './api';
+import { ChangePassword } from './pages/ChangePassword';
 import { Login } from './pages/Login';
 import { PeoplePage } from './pages/People';
 import { PeriodPage } from './pages/Period';
@@ -27,6 +28,10 @@ function App() {
 
   if (checking) return null;
   if (!user) return <Login onSignedIn={setUser} />;
+  // A temporary password (new account, or reset by the admin) must be changed first.
+  if (user.mustChangePassword) {
+    return <ChangePassword forced onDone={setUser} onSignOut={() => (auth.set(null), setUser(null))} />;
+  }
   const isSuper = user.role === 'admin';
   if (!isSuper && !user.adminServiceIds.length && user.role !== 'viewer') {
     return (
@@ -57,6 +62,7 @@ function App() {
           <div className="spacer" />
           {/* The surgeon app lives at the site root and shares this sign-in. */}
           <a href="/">{user.takesCall ? 'My schedule' : 'Open the app'} ↗</a>
+          <NavLink to="/password" className="small">Change password</NavLink>
           <span className="muted small who" style={{ padding: '0 10px' }}>
             {user.name}
             {!isSuper && <><br />{user.role === 'viewer' ? 'View only' : 'Team admin'}</>}
@@ -74,6 +80,7 @@ function App() {
             <Route path="/holidays" element={<HolidaysPage />} />
             {isSuper && <Route path="/people" element={<PeoplePage currentUserId={user.id} />} />}
             {isSuper && <Route path="/services" element={<ServicesPage />} />}
+            <Route path="/password" element={<ChangePassword onDone={setUser} />} />
             <Route path="*" element={<Navigate to="/periods" replace />} />
           </Routes>
         </main>

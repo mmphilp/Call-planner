@@ -86,6 +86,8 @@ npm run dev:api             # API on http://localhost:4000
 npm run dev:admin           # admin console on http://localhost:5173/admin/
 ```
 
+New accounts made on the *Surgeons* page get a temporary password: the person chooses their own at first sign-in (same after you reset someone's password). *Require everyone to change password* flags everyone except you.
+
 Demo logins (password `password123`): `admin@example.com` (admin), `surgeon1@example.com` … `surgeon12@example.com`.
 
 Mobile app (separate install, since Expo manages its own dependency versions):

@@ -15,6 +15,8 @@ const blank: Draft = {
   serviceIds: [],
   adminServiceIds: [],
   password: '',
+  // New accounts always choose their own password at first sign-in.
+  mustChangePassword: true,
 };
 
 export function PeoplePage({ currentUserId }: { currentUserId: string }) {
@@ -47,6 +49,17 @@ export function PeoplePage({ currentUserId }: { currentUserId: string }) {
   };
 
   const serviceName = new Map(data?.services.map((s) => [s.id, s.name]));
+  const [notice, setNotice] = useState<string | null>(null);
+  const requireAll = async () => {
+    if (!confirm('Make everyone except you choose a new password the next time they sign in (or open the app)?')) return;
+    try {
+      const { flagged } = await post<{ flagged: number }>('/api/users/require-password-change');
+      setNotice(`${flagged} ${flagged === 1 ? 'person' : 'people'} will be asked to choose a new password.`);
+      reload();
+    } catch (e) {
+      setNotice((e as Error).message);
+    }
+  };
 
   return (
     <>
@@ -55,9 +68,13 @@ export function PeoplePage({ currentUserId }: { currentUserId: string }) {
           <h1>Surgeons</h1>
           <div className="muted">Who takes call, what they can cover, and their share of call (FTE).</div>
         </div>
-        <button className="primary" onClick={() => open(blank)}>Add person</button>
+        <div className="row">
+          <button onClick={requireAll}>Require everyone to change password</button>
+          <button className="primary" onClick={() => open(blank)}>Add person</button>
+        </div>
       </div>
       {error && <div className="alert error">{error}</div>}
+      {notice && <div className="alert ok">{notice}</div>}
       <div className="card" style={{ padding: 0 }}>
         <table>
           <thead>
@@ -84,7 +101,10 @@ export function PeoplePage({ currentUserId }: { currentUserId: string }) {
                     <div className="small muted">Team admin: {u.adminServiceIds.map((s) => serviceName.get(s) ?? s).join(', ')}</div>
                   )}
                 </td>
-                <td>{u.active ? <span className="badge ok">Active</span> : <span className="badge">Inactive</span>}</td>
+                <td>
+                  {u.active ? <span className="badge ok">Active</span> : <span className="badge">Inactive</span>}
+                  {u.active && u.mustChangePassword && <div className="small muted">Must change password</div>}
+                </td>
                 <td><button className="link" onClick={() => open({ ...u, phone: u.phone ?? '', password: '' })}>Edit</button></td>
               </tr>
             ))}
@@ -103,7 +123,16 @@ export function PeoplePage({ currentUserId }: { currentUserId: string }) {
               <label className="field">Mobile phone<input value={draft.phone ?? ''} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} /></label>
               <label className="field">
                 {draft.id ? 'New password (leave blank to keep)' : 'Temporary password'}
-                <input type="password" minLength={8} required={!draft.id} value={draft.password} onChange={(e) => setDraft({ ...draft, password: e.target.value })} />
+                <input
+                  type="password"
+                  minLength={8}
+                  required={!draft.id}
+                  value={draft.password}
+                  // A password you set for someone is temporary: they choose their own at next sign-in.
+                  onChange={(e) =>
+                    setDraft({ ...draft, password: e.target.value, mustChangePassword: draft.id === currentUserId ? draft.mustChangePassword : true })
+                  }
+                />
               </label>
               <label className="field">
                 Role
@@ -122,6 +151,17 @@ export function PeoplePage({ currentUserId }: { currentUserId: string }) {
               <div className="full row">
                 <label className="check"><input type="checkbox" checked={draft.takesCall} onChange={(e) => setDraft({ ...draft, takesCall: e.target.checked })} /> Takes call</label>
                 <label className="check"><input type="checkbox" checked={draft.active} disabled={draft.id === currentUserId} onChange={(e) => setDraft({ ...draft, active: e.target.checked })} /> Active</label>
+                {draft.id !== currentUserId && (
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={!!draft.mustChangePassword}
+                      disabled={!draft.id}
+                      onChange={(e) => setDraft({ ...draft, mustChangePassword: e.target.checked })}
+                    />{' '}
+                    Must choose a new password at next sign-in
+                  </label>
+                )}
               </div>
               {draft.takesCall && (
                 <fieldset className="full" style={{ border: '1px solid var(--border)', borderRadius: 6 }}>

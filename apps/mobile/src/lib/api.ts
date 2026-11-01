@@ -14,6 +14,8 @@ export interface User {
   takesCall: boolean;
   phone: string | null;
   serviceIds: string[];
+  /** Must choose a new password before using the app (new account, or reset by the admin). */
+  mustChangePassword?: boolean;
   /** Services this surgeon runs weekday call for (team admin). */
   adminServiceIds?: string[];
   calendarPath?: string;
@@ -177,6 +179,13 @@ export const setUnauthorizedHandler = (fn: () => void) => {
   onUnauthorized = fn;
 };
 
+/** The server's answer when a password change is required first. */
+export const PASSWORD_CHANGE_REQUIRED = 'Please choose a new password first';
+let onPasswordRequired: () => void = () => {};
+export const setPasswordRequiredHandler = (fn: () => void) => {
+  onPasswordRequired = fn;
+};
+
 export async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = await tokenStore.get();
   let res: Response;
@@ -194,6 +203,7 @@ export async function api<T>(method: string, path: string, body?: unknown): Prom
   }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && path !== '/api/auth/login') onUnauthorized();
+  if (res.status === 403 && data.error === PASSWORD_CHANGE_REQUIRED) onPasswordRequired();
   if (!res.ok) throw new ApiError(res.status, data.error ?? `Request failed (${res.status})`);
   return data as T;
 }
