@@ -5,7 +5,7 @@ import { Badge, Button, Card, Chip, ErrorText, SectionHeader, T } from '@/compon
 import { api, type Schedule, type Trade } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { confirmAsync, notify } from '@/lib/dialogs';
-import { KIND_LABEL, longDate, nowLocal, shiftSpan } from '@/lib/format';
+import { kindLabel, longDate, nowLocal, shiftSpan } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
 const STATUS: Record<Trade['status'], string> = {
@@ -106,7 +106,7 @@ export default function TradeScreen() {
         <Card style={{ gap: 2 }}>
           <T bold size={17}>{longDate(shift.date)}</T>
           <T>
-            {service?.name} · {KIND_LABEL[shift.kind]}
+            {service?.name} · {kindLabel(shift)}
           </T>
           <T muted size={13}>{shiftSpan(shift)}</T>
         </Card>

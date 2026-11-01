@@ -1,4 +1,4 @@
-import { addDays, longDate, toMinutes, weekStart } from './dates';
+import { addDays, dayOfWeek, longDate, toMinutes, weekStart } from './dates';
 import {
   mergeRules,
   SHIFT_KINDS,
@@ -230,7 +230,9 @@ class Model {
         });
       }
     }
-    const weekends = list.filter((i) => this.info[i].shift.kind === 'weekend');
+    // Spacing applies to real weekends; a mid-week holiday block (e.g.
+    // Thanksgiving) is kept apart from the next weekend by the rest rule.
+    const weekends = list.filter((i) => this.info[i].shift.kind === 'weekend' && dayOfWeek(this.info[i].shift.date) === 5);
     const minGapDays = (r.minWeekendsOffBetween + 1) * 7;
     for (let i = 1; i < weekends.length; i++) {
       const a = this.info[weekends[i - 1]];

@@ -4,7 +4,7 @@ import { MonthCoverage } from '@/components/MonthCoverage';
 import { Card, Chip, Empty, ErrorText, Screen, SectionHeader, T, useApi } from '@/components/ui';
 import { api, type Period, type Schedule } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { addDays, dayOfWeek, holidayMap, KIND_LABEL, longDate, monthDay, monthLabel, nowLocal, shiftSpan, todayStr } from '@/lib/format';
+import { addDays, dayOfWeek, holidayMap, kindLabel, longDate, monthDay, monthLabel, nowLocal, shiftSpan, todayStr } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
 /**
@@ -17,7 +17,8 @@ function shiftsOn(schedule: Schedule | null, d: string) {
   const name = new Map(schedule.services.map((s) => [s.id, s.name]));
   const order = { day: 0, night: 1, weekend: 2 } as const;
   return schedule.shifts
-    .filter((s) => s.date === d || (s.kind === 'weekend' && s.date < d && s.end > `${d}T07:00`))
+    // A weekend or holiday block shows on every day it covers, from the evening it starts.
+    .filter((s) => (s.kind === 'weekend' ? s.start.slice(0, 10) <= d && s.end > `${d}T07:00` : s.date === d))
     .sort(
       (a, b) =>
         Number(a.kind === 'weekend') - Number(b.kind === 'weekend') ||
@@ -98,7 +99,7 @@ export default function ScheduleScreen() {
   const line = (s: Schedule['shifts'][number], withTimes = true) => (
     <ShiftLine
       key={s.id}
-      label={`${services.get(s.serviceId)?.name} · ${KIND_LABEL[s.kind]}`}
+      label={`${services.get(s.serviceId)?.name} · ${kindLabel(s)}`}
       sub={withTimes ? shiftSpan(s) : undefined}
       color={services.get(s.serviceId)?.color}
       person={people.get(owner.get(s.id) ?? '')}
@@ -128,7 +129,7 @@ export default function ScheduleScreen() {
           <SectionHeader>On call now</SectionHeader>
           <Card style={{ gap: 10 }}>
             {onNow.map((s) => (
-              <ShiftLine key={s.id} label={`${services.get(s.serviceId)?.name} · ${KIND_LABEL[s.kind]}`} color={services.get(s.serviceId)?.color} person={people.get(owner.get(s.id) ?? '')}
+              <ShiftLine key={s.id} label={`${services.get(s.serviceId)?.name} · ${kindLabel(s)}`} color={services.get(s.serviceId)?.color} person={people.get(owner.get(s.id) ?? '')}
                       locum={s.coveredBy} me={owner.get(s.id) === user?.id} />
             ))}
           </Card>

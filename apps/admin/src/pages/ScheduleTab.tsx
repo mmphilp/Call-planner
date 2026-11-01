@@ -289,6 +289,16 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
           <tbody>
             {weekdays.map((d) => {
               const dow = dayOfWeek(d);
+              // Call a weekend or holiday block takes over from the teams.
+              const blockAt = (time: string) =>
+                schedule.shifts.find((x) => x.kind === 'weekend' && x.start <= `${d}T${time}` && x.end > `${d}T${time}`);
+              const taken = (time: string) => (blockAt(time)?.holiday ? 'holiday' : 'weekend');
+              // A mid-week holiday block (e.g. Thanksgiving) shows in the night
+              // column of the evening it starts. Weekend blocks show on Friday.
+              const holidayBlock = (sid: string) =>
+                schedule.shifts.find(
+                  (x) => x.serviceId === sid && x.kind === 'weekend' && x.start === `${d}T17:00` && dayOfWeek(x.date) !== 5,
+                );
               const marks = schedule.calendarHolidays.filter((h) => h.date === d);
               return (
                 <tr key={d} className={`${weekStart(d) === d ? 'week-start' : ''} ${marks.length ? 'holiday' : ''}`}>
@@ -302,12 +312,14 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
                     ))}
                   </td>
                   {services.flatMap((s) => [
-                    s.coversWeekdayDay && <td key={`${s.id}d`}>{cell(shiftById.get(`${s.id}:day:${d}`), 'weekend')}</td>,
+                    s.coversWeekdayDay && <td key={`${s.id}d`}>{cell(shiftById.get(`${s.id}:day:${d}`), taken('12:00'))}</td>,
                     (s.coversWeekdayNight || s.coversWeekend) && (
                       <td key={`${s.id}n`}>
                         {dow === 5 && s.coversWeekend
                           ? cell(shiftById.get(`${s.id}:weekend:${d}`), '')
-                          : cell(shiftById.get(`${s.id}:night:${d}`), s.coversWeekdayNight ? 'weekend' : '')}
+                          : s.coversWeekend && holidayBlock(s.id)
+                            ? cell(holidayBlock(s.id), '')
+                            : cell(shiftById.get(`${s.id}:night:${d}`), s.coversWeekdayNight ? taken('20:00') : '')}
                       </td>
                     ),
                   ])}
@@ -380,7 +392,7 @@ function WeekendTable({
         <table className="sched">
           <thead>
             <tr>
-              <th>Weekend</th>
+              <th>Weekend / holiday</th>
               <th>Hours</th>
               {services.map((s) => (
                 <th key={s.id}>

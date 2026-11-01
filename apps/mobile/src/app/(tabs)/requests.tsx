@@ -4,7 +4,7 @@ import { Badge, Button, Card, Empty, ErrorText, Screen, SectionHeader, T, useApi
 import { api, type CallRequest, type Period, type Trade } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { confirmAsync, notify } from '@/lib/dialogs';
-import { dateRange, KIND_LABEL, longDate, todayStr } from '@/lib/format';
+import { dateRange, kindLabel, longDate, todayStr } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
 export const TYPE_LABEL: Record<CallRequest['type'], string> = {
@@ -103,7 +103,7 @@ const TRADE_STATUS: Record<Trade['status'], { label: string; tone: 'ok' | 'warn'
   rejected: { label: 'Rejected', tone: 'bad' },
 };
 
-const shiftText = (s?: Trade['shift']) => (s ? `${s.serviceName} ${KIND_LABEL[s.kind].toLowerCase()}, ${longDate(s.date)}` : 'a removed shift');
+const shiftText = (s?: Trade['shift']) => (s ? `${s.serviceName} ${kindLabel(s).toLowerCase()}, ${longDate(s.date)}` : 'a removed shift');
 
 /** Offers colleagues can take, swaps waiting on you, and your own trades. */
 function Swaps({ trades, reload }: { trades: Trade[]; reload: () => void }) {

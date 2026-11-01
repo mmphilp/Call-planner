@@ -12,7 +12,7 @@ Call scheduling for a surgical group: surgeons send requests from an iPhone/Andr
 
 * Each **service** (e.g. General Surgery, Trauma) chooses which of these it needs covered, and each surgeon is set up for the services they can cover.
 * Schedules are built per **half-year**: January–June and July–December.
-* **Holidays** are balanced separately. A holiday on a Friday or Monday stretches that weekend block (Thu 5pm start or Tue 7am end).
+* **Holidays** are covered like weekends and balanced separately. A holiday on a Friday or Monday stretches that weekend block (Thu 5pm start or Tue 7am end). Any other weekday holiday gets its own holiday block from 5pm the evening before to 7am the morning after (Thanksgiving: Wed 5pm – Fri 7am). With a shared weekend service, only that service covers holidays; the specialty teams have no call on them.
 
 ## The workflow
 
@@ -43,7 +43,7 @@ Call scheduling for a surgical group: surgeons send requests from an iPhone/Andr
 * **Holidays.** The group's holidays are New Year's Day, Memorial Day, Juneteenth, Fourth of July, Labor Day, Thanksgiving and Christmas.
   * They're marked by name on every calendar.
   * Each schedule's Overview tab sets the day the hospital *observes* each one. New schedules start on the usual rule: Saturday → Friday, Sunday → Monday.
-  * Observed days are balanced as holiday call and stretch long weekends.
+  * Observed days are covered by the weekend service only: they stretch long weekends, or get a holiday block of their own. To add a day the hospital also observes, such as Christmas Eve, add it to the schedule's list.
   * The *Holidays* page shows who covered which holiday each year. The optimizer rotates a holiday away from whoever had it last time.
 * **Swaps and giveaways.** On a published schedule, a surgeon taps a shift in *My Call* to offer it to anyone who covers that service, or to propose a swap for a colleague's shift of the same kind.
   * Once it's taken or accepted, it appears on the schedule's *Swaps* tab. The admin sees any rule problems it would cause before approving.

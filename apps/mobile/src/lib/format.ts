@@ -5,6 +5,10 @@ const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 
 
 export const KIND_LABEL: Record<ShiftKind, string> = { day: 'Day call', night: 'Night call', weekend: 'Weekend call' };
 
+/** "Weekend call", or "Holiday call" for a mid-week holiday block (a weekend-kind shift not on a Friday). */
+export const kindLabel = (s: { kind: ShiftKind; date: string }) =>
+  s.kind === 'weekend' && dayOfWeek(s.date) !== 5 ? 'Holiday call' : KIND_LABEL[s.kind];
+
 function parts(date: string) {
   const [y, m, d] = date.split('-').map(Number);
   return { y, m, d, dow: new Date(Date.UTC(y, m - 1, d)).getUTCDay() };

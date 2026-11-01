@@ -1,4 +1,4 @@
-import { longDate } from '@call-planner/core';
+import { dayOfWeek, longDate } from '@call-planner/core';
 import { get, type Schedule, type User } from '../api';
 import { useLoad } from '../useLoad';
 
@@ -82,7 +82,7 @@ export function HolidaysPage() {
                       <td key={`${o.name}${o.date}`} className="small" style={mine.length ? { background: 'var(--weekend-bg)' } : undefined}>
                         {mine.map((c) => (
                           <div key={c.shiftId} style={c.crossCover ? { fontStyle: 'italic' } : undefined}>
-                            {service.get(c.serviceId)?.name ?? c.serviceId} ({KIND[c.kind]})
+                            {service.get(c.serviceId)?.name ?? c.serviceId} ({c.kind === 'weekend' && dayOfWeek(c.shiftId.split(':').at(-1)!) !== 5 ? 'holiday block' : KIND[c.kind]})
                           </div>
                         ))}
                       </td>

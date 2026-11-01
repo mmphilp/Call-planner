@@ -1,3 +1,4 @@
+import { isHolidayBlock } from '@call-planner/core';
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../db';
 import { httpError } from '../http';
@@ -39,7 +40,7 @@ export function calendarRoutes(app: FastifyInstance, db: Db) {
         `DTSTAMP:${stamp}`,
         `DTSTART:${icsTime(s.start)}`,
         `DTEND:${icsTime(s.end)}`,
-        `SUMMARY:${services.get(s.service_id) ?? s.service_id} – ${KIND_LABEL[s.kind as keyof typeof KIND_LABEL]}`,
+        `SUMMARY:${services.get(s.service_id) ?? s.service_id} – ${isHolidayBlock(s) ? 'Holiday call' : KIND_LABEL[s.kind as keyof typeof KIND_LABEL]}`,
         'END:VEVENT',
       ]),
       'END:VCALENDAR',

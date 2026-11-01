@@ -1,4 +1,4 @@
-import { longDate, longSpan } from '@call-planner/core';
+import { isHolidayBlock, longDate, longSpan } from '@call-planner/core';
 import { useState } from 'react';
 import { post, type Trade, type TradeShift } from '../api';
 import type { PeriodData } from './Period';
@@ -18,7 +18,7 @@ function ShiftLabel({ s }: { s?: TradeShift }) {
   if (!s) return <span className="muted">(shift removed)</span>;
   return (
     <span title={longSpan(s.start, s.end)}>
-      <b>{s.serviceName}</b> {KIND[s.kind]}, {longDate(s.date)}
+      <b>{s.serviceName}</b> {isHolidayBlock(s) ? 'Holiday call' : KIND[s.kind]}, {longDate(s.date)}
     </span>
   );
 }
