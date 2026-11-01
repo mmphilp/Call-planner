@@ -8,3 +8,5 @@ apps/mobile/ios/
 apps/mobile/android/
 *.db-wal
 *.db-shm
+# Your own compose additions (e.g. a cloudflared tunnel), merged automatically by docker compose
+docker-compose.override.yml
