@@ -18,6 +18,7 @@ import {
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { transaction, type Db } from '../db';
+import { calendarHolidays, defaultHolidays, nameShifts, normalizeHolidays } from '../holidays';
 import { regenerate as syncRegenerate, refreshCover as syncRefreshCover, shiftsOutOfDate } from '../sync';
 import { canEditShift, dateStr, httpError, isScheduler, me, parse, requireAdmin, requireScheduler } from '../http';
 import {
@@ -47,12 +48,45 @@ const rulesBody = z
   })
   .partial();
 
+// Holidays are { date: observed day, name }; bare dates are still accepted.
+const holidayList = z.array(z.union([dateStr, z.object({ date: dateStr, name: z.string().trim().min(1).max(60) })]));
+
+/** Normalized, de-duplicated holiday list for storage. */
+const storeHolidays = (raw: z.infer<typeof holidayList>) => {
+  const seen = new Set<string>();
+  return JSON.stringify(
+    normalizeHolidays(raw).filter((h) => {
+      const k = `${h.date}|${h.name}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    }),
+  );
+};
+
 const periodPatch = z.object({
   status: z.enum(['draft', 'open', 'closed', 'published']).optional(),
   requestDeadline: dateStr.nullable().optional(),
-  holidays: z.array(dateStr).optional(),
+  holidays: holidayList.optional(),
   rules: rulesBody.optional(),
 });
+
+interface HolidayOccurrence {
+  name: string;
+  /** The observed day. */
+  date: string;
+  periodId: string;
+  periodLabel: string;
+  status: Period['status'];
+  covers: {
+    shiftId: string;
+    serviceId: string;
+    kind: ShiftKind;
+    userId: string | null;
+    coveredBy: string | null;
+    crossCover: boolean;
+  }[];
+}
 
 export function periodRoutes(app: FastifyInstance, db: Db) {
   /** Load a period the current user is allowed to see. */
@@ -74,6 +108,50 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
   const regenerate = (p: Period) => syncRegenerate(db, p);
   const refreshCover = (periodId: string) => syncRefreshCover(db, periodId);
 
+  /** Every holiday in every schedule, with who covered it (for the rotation page and the optimizer). */
+  const holidayCoverage = () =>
+    listPeriods(db).flatMap((period) => {
+      const owner = new Map(listAssignments(db, period.id).map((a) => [a.shiftId, a]));
+      const byHoliday = new Map<string, HolidayOccurrence>();
+      for (const s of nameShifts(listShifts(db, period.id), period.holidays)) {
+        if (!s.holidayName) continue;
+        const h = period.holidays.find((x) => x.name === s.holidayName)!;
+        const key = `${h.name}|${h.date}`;
+        if (!byHoliday.has(key)) {
+          byHoliday.set(key, { name: h.name, date: h.date, periodId: period.id, periodLabel: period.label, status: period.status, covers: [] });
+        }
+        const a = owner.get(s.id);
+        byHoliday.get(key)!.covers.push({
+          shiftId: s.id,
+          serviceId: s.serviceId,
+          kind: s.kind,
+          userId: a?.userId ?? null,
+          coveredBy: s.coveredBy ?? null,
+          crossCover: a?.source === 'backup',
+        });
+      }
+      return [...byHoliday.values()];
+    });
+
+  /** userId → holidays they covered the last time each came round before this schedule. */
+  const lastHolidayCover = (p: Period): Record<string, string[]> => {
+    const latest = new Map<string, HolidayOccurrence>();
+    for (const o of holidayCoverage()) {
+      if (o.date >= p.startDate) continue;
+      if (!latest.has(o.name) || latest.get(o.name)!.date < o.date) latest.set(o.name, o);
+    }
+    const out: Record<string, string[]> = {};
+    for (const o of latest.values()) {
+      for (const c of o.covers) if (c.userId) (out[c.userId] ??= []).includes(o.name) || out[c.userId].push(o.name);
+    }
+    return out;
+  };
+
+  app.get('/api/holidays/history', async (req) => {
+    requireScheduler(req);
+    return holidayCoverage().sort((a, b) => a.date.localeCompare(b.date));
+  });
+
   app.get('/api/rules/defaults', async () => DEFAULT_RULES);
 
   app.get('/api/periods', async (req) => {
@@ -88,7 +166,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
         year: z.number().int().min(2000).max(2100),
         half: z.union([z.literal(1), z.literal(2)]),
         requestDeadline: dateStr.nullable().optional(),
-        holidays: z.array(dateStr).default([]),
+        holidays: holidayList.optional(),
       }),
       req.body,
     );
@@ -100,7 +178,16 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     db.prepare(
       `INSERT INTO periods (id, year, half, start_date, end_date, request_deadline, holidays_json)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, body.year, body.half, start, end, body.requestDeadline ?? null, JSON.stringify(body.holidays));
+    ).run(
+      id,
+      body.year,
+      body.half,
+      start,
+      end,
+      body.requestDeadline ?? null,
+      // New schedules start with the group's holidays on their usual observed days.
+      body.holidays ? storeHolidays(body.holidays) : JSON.stringify(defaultHolidays(start, end)),
+    );
     const p = getPeriod(db, id)!;
     regenerate(p);
     reply.code(201);
@@ -128,10 +215,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
         db.prepare('UPDATE periods SET request_deadline = ? WHERE id = ?').run(body.requestDeadline, p.id);
       }
       if (body.holidays) {
-        db.prepare('UPDATE periods SET holidays_json = ? WHERE id = ?').run(
-          JSON.stringify([...new Set(body.holidays)].sort()),
-          p.id,
-        );
+        db.prepare('UPDATE periods SET holidays_json = ? WHERE id = ?').run(storeHolidays(body.holidays), p.id);
       }
       if (body.rules) db.prepare('UPDATE periods SET rules_json = ? WHERE id = ?').run(JSON.stringify(body.rules), p.id);
     });
@@ -160,7 +244,8 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
       // Admins are warned when the shifts no longer match the services.
       shiftsOutOfDate: isAdmin ? shiftsOutOfDate(db, p) : undefined,
       services: listServices(db),
-      shifts: listShifts(db, p.id),
+      shifts: nameShifts(listShifts(db, p.id), p.holidays),
+      calendarHolidays: calendarHolidays(p.startDate, p.endDate, p.holidays),
       assignments: isAdmin || p.status === 'published' ? listAssignments(db, p.id) : [],
       people,
     };
@@ -235,7 +320,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     const inPool = new Set(pool.map((u) => u.id));
 
     const services = listServices(db);
-    const all = applyTeamRules(poolShifts(db, p.id), services);
+    const all = nameShifts(applyTeamRules(poolShifts(db, p.id), services), p.holidays);
     const requests = listRequests(db, { periodId: p.id });
     const seed = body.seed ?? Math.floor(Math.random() * 1e9);
     // Cross-cover is recomputed afterwards, so leave it out of the plan.
@@ -250,7 +335,8 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     const lockedInScope = current.filter((a) => a.locked && scopedIds.has(a.shiftId));
     const open = scoped.filter((s) => !byShift.get(s.id)?.locked);
     // Week-long teams first: whole weeks to one surgeon where possible.
-    const weeks = planWeeks({ shifts: open, surgeons: pool, requests, rules: p.rules, services, seed });
+    const history = lastHolidayCover(p);
+    const weeks = planWeeks({ shifts: open, surgeons: pool, requests, rules: p.rules, services, seed, holidayHistory: history });
     const weekIds = new Set(weeks.map((a) => a.shiftId));
     const routine = routineFor(open.filter((s) => !weekIds.has(s.id)), p.id, inPool);
     const fixedIds = new Set(fixed.map((a) => a.shiftId));
@@ -261,6 +347,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
       rules: p.rules,
       locked: [...fixed.map((a) => ({ ...a, locked: true })), ...lockedInScope, ...weeks, ...routine],
       backups: backupMap(services),
+      holidayHistory: history,
       seed,
     });
     // Week and routine picks are stored unlocked, so they're re-planned next time.
@@ -377,7 +464,12 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
          ORDER BY s.start`,
       )
       .all(me(req).id, q.from ?? '0000') as any[];
+    const periodHolidays = new Map(listPeriods(db).map((p) => [p.id, p.holidays]));
     return rows.map((r) => ({
+      holidayName: nameShifts<Shift>(
+        [{ id: r.id, serviceId: r.service_id, kind: r.kind, date: r.date, start: r.start, end: r.end }],
+        periodHolidays.get(r.period_id) ?? [],
+      )[0].holidayName,
       id: r.id,
       periodId: r.period_id,
       serviceId: r.service_id,

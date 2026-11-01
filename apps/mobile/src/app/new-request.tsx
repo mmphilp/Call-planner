@@ -4,7 +4,7 @@ import { ScrollView, TextInput, View } from 'react-native';
 import { Button, Card, Chip, ErrorText, SectionHeader, T } from '@/components/ui';
 import { RangeCalendar } from '@/components/RangeCalendar';
 import { api, type Period, type RequestType, type ShiftKind } from '@/lib/api';
-import { addDays, consecutiveRuns, dateRange, todayStr } from '@/lib/format';
+import { addDays, consecutiveRuns, dateRange, holidayMap, todayStr } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
 const TYPES: { value: RequestType; label: string; help: string }[] = [
@@ -81,6 +81,8 @@ export default function NewRequestScreen() {
 
   const toggleKind = (k: ShiftKind) => setKinds(kinds.includes(k) ? kinds.filter((x) => x !== k) : [...kinds, k]);
   const min = period ? (period.startDate > todayStr() ? period.startDate : todayStr()) : todayStr();
+  const holidays = holidayMap(period?.calendarHolidays);
+  const holidaysPicked = runs.flatMap(([a, b]) => [...holidays].filter(([d]) => d >= a && d <= b).map(([, n]) => n));
 
   return (
     <ScrollView style={{ backgroundColor: t.bg }} contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 48, width: '100%', maxWidth: 560, alignSelf: 'center' }}>
@@ -106,6 +108,7 @@ export default function NewRequestScreen() {
           max={addDays(period.endDate, 3)}
           start={start}
           end={end}
+          holidays={holidays}
           onChange={(s, e) => {
             setStart(s);
             setEnd(e);
@@ -113,7 +116,7 @@ export default function NewRequestScreen() {
         />
       )}
       {period && mode === 'days' && (
-        <RangeCalendar min={min} max={addDays(period.endDate, 3)} days={days} onToggleDay={toggleDay} />
+        <RangeCalendar min={min} max={addDays(period.endDate, 3)} days={days} onToggleDay={toggleDay} holidays={holidays} />
       )}
       <T muted size={13}>
         {mode === 'range'
@@ -124,6 +127,8 @@ export default function NewRequestScreen() {
             ? `${runs.map(([a, b]) => dateRange(a, b)).join('; ')}${runs.length > 1 ? ` — sent as ${runs.length} requests` : ''}`
             : 'Tap each day you want. Use the arrows to pick days in other months.'}
       </T>
+
+      {holidaysPicked.length > 0 && <T size={13}>★ Includes {holidaysPicked.join(', ')}</T>}
 
       <SectionHeader>Which call? (optional)</SectionHeader>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>

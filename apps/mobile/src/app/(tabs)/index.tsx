@@ -75,7 +75,7 @@ function ShiftRow({ shift }: { shift: MyShift }) {
           {shiftSpan(shift)}
         </T>
       </View>
-      {shift.holiday && <Badge label="Holiday" tone="warn" />}
+      {shift.holiday && <Badge label={shift.holidayName ?? 'Holiday'} tone="warn" />}
     </Card>
   );
 }

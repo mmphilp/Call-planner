@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, rmSync } from 'node:fs';
 import { generateShifts, halfYearRange } from '@call-planner/core';
 import { openDb } from './db';
+import { defaultHolidays } from './holidays';
 import { listServices } from './repo';
 import { createUser } from './routes/people';
 
@@ -51,7 +52,7 @@ const surgeons = names.map((name, i) =>
 
 const year = 2027;
 const { start, end } = halfYearRange(year, 1);
-const holidays = ['2027-01-01', '2027-01-18', '2027-02-15', '2027-05-31', '2027-06-18'];
+const holidays = defaultHolidays(start, end);
 const periodId = randomUUID();
 db.prepare(
   `INSERT INTO periods (id, year, half, start_date, end_date, status, request_deadline, holidays_json)
@@ -61,7 +62,7 @@ db.prepare(
 const insShift = db.prepare(
   'INSERT INTO shifts (id, period_id, service_id, kind, date, start, end, holiday) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
 );
-for (const s of generateShifts({ start, end, services: listServices(db), holidays })) {
+for (const s of generateShifts({ start, end, services: listServices(db), holidays: holidays.map((h) => h.date) })) {
   insShift.run(s.id, periodId, s.serviceId, s.kind, s.date, s.start, s.end, s.holiday ? 1 : 0);
 }
 

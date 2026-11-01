@@ -243,6 +243,42 @@ describe('service coverage changes', () => {
   }, 30_000);
 });
 
+describe('holidays', () => {
+  it('pre-fills observed holidays, names them, and rotates them year to year', async () => {
+    const { body: y1 } = await call(adminToken, 'POST', '/api/periods', { year: 2026, half: 2 });
+    expect(y1.holidays.map((h: any) => `${h.name} ${h.date}`)).toEqual([
+      'Fourth of July 2026-07-03',
+      'Labor Day 2026-09-07',
+      'Thanksgiving 2026-11-26',
+      'Christmas 2026-12-25',
+    ]);
+    // The hospital observes the Fourth on Monday the 6th this year.
+    const moved = y1.holidays.map((h: any) => (h.name === 'Fourth of July' ? { ...h, date: '2026-07-06' } : h));
+    await call(adminToken, 'PATCH', `/api/periods/${y1.id}`, { holidays: moved });
+    const sched = (await call(adminToken, 'GET', `/api/periods/${y1.id}/schedule`)).body;
+    expect(sched.calendarHolidays).toContainEqual({ date: '2026-07-04', name: 'Fourth of July', observed: false });
+    expect(sched.calendarHolidays).toContainEqual({ date: '2026-07-06', name: 'Fourth of July', observed: true });
+    // Weekend block stretched to Tuesday 7am and named.
+    const w = sched.shifts.find((s: any) => s.id === 'general:weekend:2026-07-03');
+    expect(w).toMatchObject({ end: '2026-07-07T07:00', holidayName: 'Fourth of July' });
+
+    await call(adminToken, 'POST', `/api/periods/${y1.id}/optimize`, { seed: 1, kinds: ['weekend'] });
+    const history = (await call(adminToken, 'GET', '/api/holidays/history')).body;
+    const xmas26 = history.find((o: any) => o.name === 'Christmas' && o.date === '2026-12-25');
+    const hadIt = xmas26.covers.find((c: any) => c.kind === 'weekend').userId;
+    expect(hadIt).toBeTruthy();
+
+    // Next year: whoever had the Christmas weekend is rotated off it.
+    const { body: y2 } = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2 });
+    for (const seed of [1, 2, 3]) {
+      await call(adminToken, 'POST', `/api/periods/${y2.id}/optimize`, { seed, kinds: ['weekend'] });
+      const h2 = (await call(adminToken, 'GET', '/api/holidays/history')).body;
+      const xmas27 = h2.find((o: any) => o.name === 'Christmas' && o.date === '2027-12-24');
+      expect(xmas27.covers.find((c: any) => c.kind === 'weekend').userId).not.toBe(hadIt);
+    }
+  }, 60_000);
+});
+
 describe('full scheduling workflow', () => {
   it('collects requests, optimizes, edits, publishes and shares the schedule', async () => {
     const created = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2, holidays: ['2027-09-06'] });

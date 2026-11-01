@@ -15,6 +15,7 @@ export function RangeCalendar({
   onChange,
   days,
   onToggleDay,
+  holidays,
 }: {
   min: string;
   max: string;
@@ -23,6 +24,8 @@ export function RangeCalendar({
   onChange?: (start: string | null, end: string | null) => void;
   days?: Set<string>;
   onToggleDay?: (date: string) => void;
+  /** Holiday names by date, marked with a star. */
+  holidays?: Map<string, string>;
 }) {
   const t = useTheme();
   const [month, setMonth] = useState((start ?? [...(days ?? [])].sort()[0] ?? min).slice(0, 7));
@@ -83,6 +86,11 @@ export function RangeCalendar({
                     {Number(d.slice(8))}
                   </Text>
                 </View>
+                {holidays?.has(d) && (
+                  <Text style={[styles.star, { color: t.warn }]} accessibilityLabel={holidays.get(d)}>
+                    ★
+                  </Text>
+                )}
               </Pressable>
             );
           })}
@@ -102,4 +110,5 @@ const styles = StyleSheet.create({
   dow: { height: 24, lineHeight: 24, fontSize: 12 },
   day: { marginVertical: 1 },
   dot: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  star: { position: 'absolute', top: 1, right: 4, fontSize: 9 },
 });

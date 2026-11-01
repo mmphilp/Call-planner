@@ -1,0 +1,69 @@
+import { standardHolidays, type Shift } from '@call-planner/core';
+
+/** A holiday as a schedule observes it: `date` is the day the hospital observes. */
+export interface PeriodHoliday {
+  date: string;
+  name: string;
+}
+
+/** A holiday marker for calendars: the actual date, or the observed day when it differs. */
+export interface CalendarHoliday {
+  date: string;
+  name: string;
+  observed: boolean;
+}
+
+function yearsOf(start: string, end: string) {
+  const out: number[] = [];
+  for (let y = Number(start.slice(0, 4)); y <= Number(end.slice(0, 4)); y++) out.push(y);
+  return out;
+}
+
+/** Older schedules stored bare dates; name them when they match a known holiday. */
+export function normalizeHolidays(raw: unknown): PeriodHoliday[] {
+  const list = Array.isArray(raw) ? raw : [];
+  return list
+    .map((h): PeriodHoliday => {
+      if (typeof h === 'string') {
+        const known = standardHolidays(Number(h.slice(0, 4))).find((s) => s.date === h || s.observed === h);
+        return { date: h, name: known?.name ?? 'Holiday' };
+      }
+      const o = h as { date: string; name?: string };
+      return { date: o.date, name: o.name?.trim() || 'Holiday' };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Default observed holidays for a new schedule: the usual rule (Saturday → Friday, Sunday → Monday). */
+export function defaultHolidays(start: string, end: string): PeriodHoliday[] {
+  return yearsOf(start, end)
+    .flatMap(standardHolidays)
+    .filter((h) => h.observed >= start && h.observed <= end)
+    .map((h) => ({ date: h.observed, name: h.name }));
+}
+
+/** Actual holiday dates in the period, plus observed days that fall on a different date. */
+export function calendarHolidays(start: string, end: string, holidays: PeriodHoliday[]): CalendarHoliday[] {
+  const actual = yearsOf(start, end)
+    .flatMap(standardHolidays)
+    .filter((h) => h.date >= start && h.date <= end)
+    .map((h) => ({ date: h.date, name: h.name, observed: false }));
+  const extra = holidays
+    .filter((h) => !actual.some((a) => a.date === h.date && a.name === h.name))
+    .map((h) => ({ ...h, observed: actual.some((a) => a.name === h.name) || standardHolidays(Number(h.date.slice(0, 4))).some((s) => s.name === h.name) }));
+  return [...actual, ...extra].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * Tag shifts with the holiday they cover: a weekday shift on an observed
+ * day, or a weekend block that includes one.
+ */
+export function nameShifts<T extends Shift>(shifts: T[], holidays: PeriodHoliday[]): T[] {
+  return shifts.map((s) => {
+    const h =
+      s.kind === 'weekend'
+        ? holidays.find((x) => x.date >= s.start.slice(0, 10) && x.date < s.end.slice(0, 10))
+        : holidays.find((x) => x.date === s.date);
+    return h ? { ...s, holidayName: h.name } : s;
+  });
+}

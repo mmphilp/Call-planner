@@ -21,6 +21,8 @@ export interface OptimizeInput {
   iterations?: number;
   /** serviceId → service that covers it when the team is away (see coverFromBackup). */
   backups?: Record<string, string>;
+  /** userId → names of holidays they covered last time each came round (rotated away from). */
+  holidayHistory?: Record<string, string[]>;
 }
 
 export interface SurgeonStats {
@@ -143,6 +145,12 @@ class Model {
         else if (r.type === 'prefer_on') c = -w.preferOn;
         else if (r.type === 'unavailable' && r.status === 'pending') c = w.pendingUnavailable;
         if (c) m.set(r.userId, (m.get(r.userId) ?? 0) + c);
+      }
+      // Rotate holidays: whoever had this one last time is a later choice.
+      if (shift.holidayName) {
+        for (const [userId, names] of Object.entries(input.holidayHistory ?? {})) {
+          if (names.includes(shift.holidayName)) m.set(userId, (m.get(userId) ?? 0) + w.holidayRepeat);
+        }
       }
       return m;
     });

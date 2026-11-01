@@ -163,6 +163,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.4); }
 .cal-cell.wknd { background: var(--weekend-bg); }
 .cal-cell.holiday .cal-date { color: var(--warn); font-weight: 700; }
 .cal-date { font-size: 12px; font-weight: 600; color: var(--muted); }
+.cal-holiday { display: block; color: var(--warn); font-weight: 600; font-size: 11px; }
 .cal-entry { font-size: 12px; line-height: 1.3; border-left: 3px solid; background: var(--surface); border-radius: 3px; overflow: hidden; }
 .cal-line { padding: 1px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cal-line.night { font-size: 11px; color: var(--muted); padding-left: 12px; }

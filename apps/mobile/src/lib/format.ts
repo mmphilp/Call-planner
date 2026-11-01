@@ -80,3 +80,13 @@ export function consecutiveRuns(dates: string[]): [string, string][] {
   }
   return runs;
 }
+
+/** date → "Christmas" / "Fourth of July (observed)" for a period's holiday markers. */
+export function holidayMap(holidays: { date: string; name: string; observed: boolean }[] | undefined) {
+  const m = new Map<string, string>();
+  for (const h of holidays ?? []) {
+    const label = `${h.name}${h.observed ? ' (observed)' : ''}`;
+    m.set(h.date, m.has(h.date) ? `${m.get(h.date)}, ${label}` : label);
+  }
+  return m;
+}

@@ -23,6 +23,8 @@ export interface Period {
   endDate: string;
   status: 'draft' | 'open' | 'closed' | 'published';
   requestDeadline: string | null;
+  /** Holiday markers: actual dates, and the hospital's observed days when they differ. */
+  calendarHolidays: { date: string; name: string; observed: boolean }[];
 }
 
 export interface MyShift {
@@ -34,6 +36,7 @@ export interface MyShift {
   start: string;
   end: string;
   holiday: boolean;
+  holidayName?: string;
 }
 
 export interface Shift {

@@ -131,12 +131,17 @@ export function CalendarView({
         {cells.map((d, i) => {
           if (!d) return <div key={i} className="cal-cell empty" />;
           const inPeriod = d >= p.startDate && d <= p.endDate;
-          const holiday = p.holidays.includes(d);
+          const marks = schedule.calendarHolidays.filter((h) => h.date === d);
           return (
-            <div key={d} className={`cal-cell ${dayOfWeek(d) % 6 === 0 ? 'wknd' : ''} ${holiday ? 'holiday' : ''}`}>
+            <div key={d} className={`cal-cell ${dayOfWeek(d) % 6 === 0 ? 'wknd' : ''} ${marks.length ? 'holiday' : ''}`}>
               <div className="cal-date">
                 {Number(d.slice(8))}
-                {holiday && <span title="Holiday"> ★</span>}
+                {marks.map((h) => (
+                  <span key={h.name} className="cal-holiday">
+                    ★ {h.name}
+                    {h.observed && ' (observed)'}
+                  </span>
+                ))}
               </div>
               {inPeriod &&
                 entriesFor(d).map((e) => (

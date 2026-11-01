@@ -65,6 +65,44 @@ export function halfYearLabel(year: number, half: Half): string {
   return half === 1 ? `January–June ${year}` : `July–December ${year}`;
 }
 
+export interface Holiday {
+  name: string;
+  /** The actual date. */
+  date: DateStr;
+  /** The usual observed weekday: Saturday → Friday, Sunday → Monday. */
+  observed: DateStr;
+}
+
+export const HOLIDAY_NAMES = ['New Year’s Day', 'Memorial Day', 'Juneteenth', 'Fourth of July', 'Labor Day', 'Thanksgiving', 'Christmas'];
+
+/** The n-th given weekday of a month (n = -1 for the last). */
+function nthWeekday(year: number, month: number, weekday: number, n: number): DateStr {
+  if (n > 0) {
+    const first = `${year}-${String(month).padStart(2, '0')}-01`;
+    return addDays(first, ((weekday - dayOfWeek(first) + 7) % 7) + (n - 1) * 7);
+  }
+  const last = addDays(month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`, -1);
+  return addDays(last, -((dayOfWeek(last) - weekday + 7) % 7));
+}
+
+/** The group's holidays for a year, with their usual observed days. */
+export function standardHolidays(year: number): Holiday[] {
+  const fixed = (m: number, d: number) => `${year}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const observed = (date: DateStr) => {
+    const dow = dayOfWeek(date);
+    return dow === 6 ? addDays(date, -1) : dow === 0 ? addDays(date, 1) : date;
+  };
+  return [
+    ['New Year’s Day', fixed(1, 1)],
+    ['Memorial Day', nthWeekday(year, 5, 1, -1)],
+    ['Juneteenth', fixed(6, 19)],
+    ['Fourth of July', fixed(7, 4)],
+    ['Labor Day', nthWeekday(year, 9, 1, 1)],
+    ['Thanksgiving', nthWeekday(year, 11, 4, 4)],
+    ['Christmas', fixed(12, 25)],
+  ].map(([name, date]) => ({ name, date, observed: observed(date) }));
+}
+
 export const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 export const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 

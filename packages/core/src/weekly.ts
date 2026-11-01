@@ -43,6 +43,8 @@ export function planWeeks(input: OptimizeInput & { services: Service[] }): Assig
       start: sorted[0].start,
       end: sorted.reduce((end, s) => (s.end > end ? s.end : end), sorted[0].end),
       holiday: sorted.some((s) => s.holiday) || undefined,
+      // A holiday in the week travels with the week, so rotate it at this level.
+      holidayName: sorted.find((s) => s.holidayName)?.holidayName,
     };
   });
 
@@ -53,6 +55,7 @@ export function planWeeks(input: OptimizeInput & { services: Service[] }): Assig
     // Weeks start 7 days apart; a 14-day spacing preference discourages
     // giving the same surgeon two weeks in a row.
     rules: { ...input.rules, preferredSpacingDays: 14 },
+    holidayHistory: input.holidayHistory,
     seed: input.seed,
   });
 

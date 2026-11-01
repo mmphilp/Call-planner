@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  standardHolidays,
   applyTeamRules,
   backupMap,
   coverFromBackup,
@@ -322,4 +323,32 @@ describe('cross-cover between teams', () => {
     const report = evaluateSchedule({ shifts, surgeons: team, requests, assignments: all, backups: backupMap(services) });
     expect(report.violations).toEqual([]);
   }, 30_000);
+});
+
+describe('holidays', () => {
+  it('knows the group’s holidays and their usual observed days', () => {
+    expect(standardHolidays(2026).map((h) => `${h.name}: ${h.date} (${h.observed})`)).toEqual([
+      'New Year’s Day: 2026-01-01 (2026-01-01)',
+      'Memorial Day: 2026-05-25 (2026-05-25)',
+      'Juneteenth: 2026-06-19 (2026-06-19)',
+      'Fourth of July: 2026-07-04 (2026-07-03)',
+      'Labor Day: 2026-09-07 (2026-09-07)',
+      'Thanksgiving: 2026-11-26 (2026-11-26)',
+      'Christmas: 2026-12-25 (2026-12-25)',
+    ]);
+    expect(standardHolidays(2027).find((h) => h.name === 'Christmas')!.observed).toBe('2027-12-24');
+  });
+
+  it('rotates a holiday away from whoever had it last time', () => {
+    const shifts = generateShifts({ start: '2027-12-20', end: '2027-12-31', services: [general], holidays: ['2027-12-24'] })
+      .map((s) => (s.holiday ? { ...s, holidayName: 'Christmas' } : s));
+    const team = surgeons(4);
+    const xmas = shifts.find((s) => s.kind === 'weekend' && s.holidayName)!;
+    for (const seed of [1, 2, 3, 4, 5]) {
+      // Without history, someone gets it; with u1 and u2 having had it, it goes to u3 or u4.
+      const r = optimizeSchedule({ shifts, surgeons: team, requests: [], seed, holidayHistory: { u1: ['Christmas'], u2: ['Christmas'] } });
+      const who = r.assignments.find((a) => a.shiftId === xmas.id)!.userId;
+      expect(['u3', 'u4']).toContain(who);
+    }
+  });
 });

@@ -40,6 +40,8 @@ export interface Shift {
   holiday?: boolean;
   /** Exempt from rest and nights-per-week rules (small teams, week-long call). */
   relaxed?: boolean;
+  /** Name of the holiday this shift covers, e.g. "Christmas". */
+  holidayName?: string;
 }
 
 export interface Surgeon {
@@ -95,6 +97,8 @@ export interface Rules {
     holiday: number;
     /** Cost of each pair of shifts with less than preferredRestHours between them. */
     shortRest: number;
+    /** Cost of giving someone a holiday they covered the last time it came round. */
+    holidayRepeat: number;
   };
   /** Relative burden of each kind when balancing workload. */
   kindWeights: Record<ShiftKind, number>;
@@ -114,6 +118,7 @@ export const DEFAULT_RULES: Rules = {
     spacing: 4,
     holiday: 10,
     shortRest: 250,
+    holidayRepeat: 150,
   },
   kindWeights: { day: 1, night: 1.5, weekend: 3 },
 };

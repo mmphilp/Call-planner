@@ -4,7 +4,7 @@ import { MonthCoverage } from '@/components/MonthCoverage';
 import { Card, Chip, Empty, ErrorText, Screen, SectionHeader, T, useApi } from '@/components/ui';
 import { api, type Period, type Schedule } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { addDays, dayOfWeek, KIND_LABEL, longDate, monthDay, monthLabel, nowLocal, shiftSpan, todayStr } from '@/lib/format';
+import { addDays, dayOfWeek, holidayMap, KIND_LABEL, longDate, monthDay, monthLabel, nowLocal, shiftSpan, todayStr } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
 /**
@@ -75,6 +75,7 @@ export default function ScheduleScreen() {
   const services = useMemo(() => new Map(schedule?.services.map((s) => [s.id, s])), [schedule]);
   const owner = useMemo(() => new Map(schedule?.assignments.map((a) => [a.shiftId, a.userId])), [schedule]);
 
+  const holidays = useMemo(() => holidayMap(schedule?.period.calendarHolidays), [schedule]);
   const days = Array.from({ length: 7 }, (_, i) => addDays(week, i));
   // Weekend blocks also show on the Saturday and Sunday they cover.
   const shiftsByDay = new Map(days.map((d) => [d, shiftsOn(schedule, d)]));
@@ -160,16 +161,21 @@ export default function ScheduleScreen() {
             open={open}
             min={schedule.period.startDate}
             max={schedule.period.endDate}
+            holidays={holidays}
           />
           <View style={{ flexDirection: 'row', gap: 14, justifyContent: 'center' }}>
             <T muted size={12}><T size={12} style={{ color: t.accent }}>●</T> You’re on call</T>
             {open.size > 0 && <T muted size={12}><T size={12} style={{ color: t.bad }}>●</T> Uncovered</T>}
+            {[...holidays.keys()].some((d) => d.startsWith(month)) && (
+              <T muted size={12}><T size={12} style={{ color: t.warn }}>★</T> Holiday</T>
+            )}
           </View>
           {day && day.startsWith(month) && (
             <View style={{ gap: 6 }}>
               <SectionHeader>
                 {longDate(day)}
                 {day === todayStr() ? ' · Today' : ''}
+                {holidays.has(day) ? ` · ★ ${holidays.get(day)}` : ''}
               </SectionHeader>
               <Card style={{ gap: 10 }}>
                 {shiftsOn(schedule, day).length ? shiftsOn(schedule, day).map((s) => line(s)) : <T muted>No call scheduled.</T>}
@@ -198,6 +204,7 @@ export default function ScheduleScreen() {
                 <SectionHeader>
                   {longDate(d)}
                   {d === todayStr() ? ' · Today' : ''}
+                  {holidays.has(d) ? ` · ★ ${holidays.get(d)}` : ''}
                 </SectionHeader>
                 <Card style={{ gap: 10 }}>{list.map((s) => line(s))}</Card>
               </View>

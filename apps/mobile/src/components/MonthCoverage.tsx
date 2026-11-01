@@ -14,6 +14,7 @@ export function MonthCoverage({
   open,
   min,
   max,
+  holidays,
 }: {
   /** YYYY-MM */
   month: string;
@@ -23,6 +24,8 @@ export function MonthCoverage({
   open: Set<string>;
   min: string;
   max: string;
+  /** Holiday names by date. */
+  holidays?: Map<string, string>;
 }) {
   const t = useTheme();
   const first = `${month}-01`;
@@ -61,6 +64,7 @@ export function MonthCoverage({
                   </Text>
                 </View>
                 <View style={styles.dots}>
+                  {holidays?.has(d) && <Text style={{ fontSize: 8, lineHeight: 8, color: t.warn }}>★</Text>}
                   {mine.has(d) && <View style={[styles.dot, { backgroundColor: t.accent }]} />}
                   {open.has(d) && <View style={[styles.dot, { backgroundColor: t.bad }]} />}
                 </View>

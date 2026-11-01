@@ -284,11 +284,17 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
           <tbody>
             {weekdays.map((d) => {
               const dow = dayOfWeek(d);
-              const isHoliday = p.holidays.includes(d);
+              const marks = schedule.calendarHolidays.filter((h) => h.date === d);
               return (
-                <tr key={d} className={`${weekStart(d) === d ? 'week-start' : ''} ${isHoliday ? 'holiday' : ''}`}>
+                <tr key={d} className={`${weekStart(d) === d ? 'week-start' : ''} ${marks.length ? 'holiday' : ''}`}>
                   <td className="date">
-                    {longDate(d)} {isHoliday && <span title="Holiday">★</span>}
+                    {longDate(d)}
+                    {marks.map((h) => (
+                      <div key={h.name} className="small">
+                        ★ {h.name}
+                        {h.observed && ' (observed)'}
+                      </div>
+                    ))}
                   </td>
                   {services.flatMap((s) => [
                     s.coversWeekdayDay && <td key={`${s.id}d`}>{cell(shiftById.get(`${s.id}:day:${d}`), 'weekend')}</td>,
@@ -388,7 +394,8 @@ function WeekendTable({
               return (
                 <tr key={fri} className={any.holiday ? 'holiday' : ''}>
                   <td className="date">
-                    {longDate(fri)} {any.holiday && <span title="Includes a holiday">★</span>}
+                    {longDate(fri)}
+                    {any.holidayName && <div className="small">★ {any.holidayName}</div>}
                   </td>
                   <td className="small muted" style={{ whiteSpace: 'normal', minWidth: 220 }}>
                     {longSpan(any.start, any.end)}

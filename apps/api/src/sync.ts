@@ -3,7 +3,7 @@ import { transaction, type Db } from './db';
 import { listAssignments, listPeriods, listServices, listShifts, poolShifts, type Period } from './repo';
 
 function expectedShifts(db: Db, p: Period) {
-  return generateShifts({ start: p.startDate, end: p.endDate, services: listServices(db), holidays: p.holidays });
+  return generateShifts({ start: p.startDate, end: p.endDate, services: listServices(db), holidays: p.holidays.map((h) => h.date) });
 }
 
 /**

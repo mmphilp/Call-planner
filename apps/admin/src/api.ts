@@ -35,7 +35,8 @@ export interface Period {
   endDate: string;
   status: PeriodStatus;
   requestDeadline: string | null;
-  holidays: string[];
+  /** Holidays this schedule observes: the hospital's observed day and the holiday's name. */
+  holidays: { date: string; name: string }[];
   rules: Partial<Rules>;
   publishedAt: string | null;
 }
@@ -49,6 +50,8 @@ export interface RequestRow extends CallRequest {
 
 export interface Schedule {
   period: Period;
+  /** Holiday markers for calendars: actual dates, and observed days that differ. */
+  calendarHolidays: { date: string; name: string; observed: boolean }[];
   /** The shifts no longer match the services' coverage (admins only). */
   shiftsOutOfDate?: boolean;
   services: (Service & { color: string; sort: number })[];

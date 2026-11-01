@@ -1,4 +1,4 @@
-import { longDate, longDateRange, mergeRules, type Rules } from '@call-planner/core';
+import { longDate, longDateRange, mergeRules, standardHolidays, type Rules } from '@call-planner/core';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { del, get, patch, post, type Period, type Report, type RequestRow, type Schedule, type User } from '../api';
@@ -143,7 +143,6 @@ const STEPS: { status: Period['status']; title: string; hint: string }[] = [
 function Overview({ data, reload, goTo }: { data: PeriodData; reload: () => void; goTo: (t: Tab) => void }) {
   const p = data.schedule.period;
   const [error, setError] = useState<string | null>(null);
-  const [holiday, setHoliday] = useState('');
   const idx = STEPS.findIndex((s) => s.status === p.status);
   const assigned = data.schedule.assignments.length;
   const total = data.schedule.shifts.filter((s) => !s.coveredBy).length;
@@ -160,7 +159,7 @@ function Overview({ data, reload, goTo }: { data: PeriodData; reload: () => void
     }
   };
   const setStatus = (status: Period['status']) => run(() => patch(`/api/periods/${p.id}`, { status }));
-  const setHolidays = (holidays: string[]) => run(() => patch(`/api/periods/${p.id}`, { holidays }))();
+  const setHolidays = (holidays: Period['holidays']) => run(() => patch(`/api/periods/${p.id}`, { holidays }))();
 
   return (
     <>
@@ -223,22 +222,11 @@ function Overview({ data, reload, goTo }: { data: PeriodData; reload: () => void
       <div className="card">
         <h2>Holidays</h2>
         <p className="muted small">
-          Holiday call is balanced separately. A holiday on a Friday or Monday stretches that weekend block (Thu 5pm start or Tue 7am end).
+          Set the day the hospital observes each holiday. Observed days are balanced as holiday call, and one on a Friday or Monday
+          stretches that weekend block (Thursday 5pm start or Tuesday 7am end). The actual dates show on every calendar either way.
         </p>
-        <div className="row" style={{ marginBottom: 10 }}>
-          {p.holidays.map((h) => (
-            <span key={h} className="badge">
-              {longDate(h, { year: true })}{' '}
-              <button className="link" disabled={p.status === 'published'} onClick={() => setHolidays(p.holidays.filter((x) => x !== h))}>×</button>
-            </span>
-          ))}
-          {!p.holidays.length && <span className="muted">No holidays set.</span>}
-        </div>
-        <div className="row">
-          <input type="date" min={p.startDate} max={p.endDate} value={holiday} onChange={(e) => setHoliday(e.target.value)} />
-          <button disabled={!holiday || p.status === 'published'} onClick={() => (setHolidays([...p.holidays, holiday]), setHoliday(''))}>
-            Add holiday
-          </button>
+        <HolidayEditor period={p} onSave={setHolidays} />
+        <div className="row" style={{ marginTop: 12 }}>
           <span className="spacer" style={{ flex: 1 }} />
           <button
             disabled={p.status === 'published'}
@@ -248,6 +236,104 @@ function Overview({ data, reload, goTo }: { data: PeriodData; reload: () => void
             Rebuild shifts from services
           </button>
         </div>
+      </div>
+    </>
+  );
+}
+
+/** The group's holidays with the hospital's observed day for each, plus any extra holidays. */
+function HolidayEditor({ period: p, onSave }: { period: Period; onSave: (h: Period['holidays']) => void }) {
+  const [extra, setExtra] = useState({ name: '', date: '' });
+  const locked = p.status === 'published';
+  const years = [Number(p.startDate.slice(0, 4)), Number(p.endDate.slice(0, 4))].filter((y, i, a) => a.indexOf(y) === i);
+  const standard = years
+    .flatMap(standardHolidays)
+    .filter((h) => (h.date >= p.startDate && h.date <= p.endDate) || (h.observed >= p.startDate && h.observed <= p.endDate));
+  const isStandard = (h: { name: string; date: string }) =>
+    standard.some((s) => s.name === h.name && Math.abs(Date.parse(s.date) - Date.parse(h.date)) < 7 * 86_400_000);
+  const others = p.holidays.filter((h) => !isStandard(h));
+
+  const setObserved = (name: string, actual: string, date: string | null) => {
+    const rest = p.holidays.filter((h) => !(h.name === name && isStandard(h) && Math.abs(Date.parse(actual) - Date.parse(h.date)) < 7 * 86_400_000));
+    onSave(date ? [...rest, { name, date }] : rest);
+  };
+
+  return (
+    <>
+      <table>
+        <thead>
+          <tr>
+            <th>Holiday</th>
+            <th>Date</th>
+            <th>Observed by the hospital</th>
+          </tr>
+        </thead>
+        <tbody>
+          {standard.map((h) => {
+            const entry = p.holidays.find(
+              (x) => x.name === h.name && Math.abs(Date.parse(x.date) - Date.parse(h.date)) < 7 * 86_400_000,
+            );
+            return (
+              <tr key={`${h.name}${h.date}`} style={entry ? undefined : { opacity: 0.6 }}>
+                <td>{h.name}</td>
+                <td>{longDate(h.date, { year: true })}</td>
+                <td>
+                  {entry ? (
+                    <div className="row">
+                      <input
+                        type="date"
+                        value={entry.date}
+                        min={p.startDate}
+                        max={p.endDate}
+                        disabled={locked}
+                        onChange={(e) => e.target.value.length === 10 && setObserved(h.name, h.date, e.target.value)}
+                      />
+                      <span className="small muted">{longDate(entry.date)}</span>
+                      <button className="link" disabled={locked} onClick={() => setObserved(h.name, h.date, null)}>
+                        Not observed
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      className="link"
+                      disabled={locked}
+                      onClick={() => setObserved(h.name, h.date, h.observed >= p.startDate && h.observed <= p.endDate ? h.observed : h.date)}
+                    >
+                      Observe ({longDate(h.observed)})
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+          {others.map((h) => (
+            <tr key={`${h.name}${h.date}`}>
+              <td>{h.name}</td>
+              <td className="muted">—</td>
+              <td>
+                <div className="row">
+                  <span>{longDate(h.date, { year: true })}</span>
+                  <button className="link" disabled={locked} onClick={() => onSave(p.holidays.filter((x) => x !== h))}>
+                    Remove
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="row" style={{ marginTop: 10 }}>
+        <input placeholder="Another holiday, e.g. Christmas Eve" value={extra.name} onChange={(e) => setExtra({ ...extra, name: e.target.value })} />
+        <input type="date" min={p.startDate} max={p.endDate} value={extra.date} onChange={(e) => setExtra({ ...extra, date: e.target.value })} />
+        <button
+          disabled={!extra.name.trim() || !extra.date || locked}
+          onClick={() => {
+            onSave([...p.holidays, { name: extra.name.trim(), date: extra.date }]);
+            setExtra({ name: '', date: '' });
+          }}
+        >
+          Add holiday
+        </button>
       </div>
     </>
   );

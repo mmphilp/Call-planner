@@ -10,6 +10,7 @@ import {
   type Surgeon,
 } from '@call-planner/core';
 import type { Db } from './db';
+import { calendarHolidays, normalizeHolidays, type CalendarHoliday, type PeriodHoliday } from './holidays';
 
 type Row = Record<string, any>;
 
@@ -39,7 +40,10 @@ export interface Period {
   endDate: string;
   status: PeriodStatus;
   requestDeadline: string | null;
-  holidays: string[];
+  /** Observed holidays this schedule uses (date + name). */
+  holidays: PeriodHoliday[];
+  /** Holiday markers for calendars: actual dates, and observed days that differ. */
+  calendarHolidays: CalendarHoliday[];
   rules: Partial<Rules>;
   publishedAt: string | null;
 }
@@ -155,7 +159,8 @@ function toPeriod(r: Row): Period {
     endDate: r.end_date,
     status: r.status,
     requestDeadline: r.request_deadline ?? null,
-    holidays: JSON.parse(r.holidays_json),
+    holidays: normalizeHolidays(JSON.parse(r.holidays_json)),
+    calendarHolidays: calendarHolidays(r.start_date, r.end_date, normalizeHolidays(JSON.parse(r.holidays_json))),
     rules: JSON.parse(r.rules_json),
     publishedAt: r.published_at ?? null,
   };

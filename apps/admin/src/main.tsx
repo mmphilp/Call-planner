@@ -5,6 +5,7 @@ import { auth, get, type User } from './api';
 import { Login } from './pages/Login';
 import { PeoplePage } from './pages/People';
 import { PeriodPage } from './pages/Period';
+import { HolidaysPage } from './pages/Holidays';
 import { PeriodsPage } from './pages/Periods';
 import { RoutinePage } from './pages/Routine';
 import { MeContext } from './me';
@@ -50,6 +51,7 @@ function App() {
           </div>
           <NavLink to="/periods">Schedules</NavLink>
           <NavLink to="/routine">Weekday call</NavLink>
+          <NavLink to="/holidays">Holidays</NavLink>
           {isSuper && <NavLink to="/people">Surgeons</NavLink>}
           {isSuper && <NavLink to="/services">Services</NavLink>}
           <div className="spacer" />
@@ -66,6 +68,7 @@ function App() {
             <Route path="/periods" element={<PeriodsPage />} />
             <Route path="/periods/:id" element={<PeriodPage />} />
             <Route path="/routine" element={<RoutinePage />} />
+            <Route path="/holidays" element={<HolidaysPage />} />
             {isSuper && <Route path="/people" element={<PeoplePage currentUserId={user.id} />} />}
             {isSuper && <Route path="/services" element={<ServicesPage />} />}
             <Route path="*" element={<Navigate to="/periods" replace />} />
