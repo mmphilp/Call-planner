@@ -1,6 +1,7 @@
 import { longDate, longSpan } from '@call-planner/core';
 import { useState } from 'react';
 import { get, post, type Approval, type Flag, type SignoffService } from '../api';
+import { useMe } from '../me';
 import { useLoad } from '../useLoad';
 import type { PeriodData } from './Period';
 
@@ -88,6 +89,7 @@ function Signoff({ data, reload }: { data: PeriodData; reload: () => void }) {
     [p.id, p.status, data.schedule.assignments.length, p.publishedServiceIds.join()],
   );
   const [error, setError] = useState<string | null>(null);
+  const { isSuper } = useMe();
   if (signoff.error || !signoff.data) return signoff.error ? null : <div className="muted">Loading…</div>;
   if (p.status === 'draft' || p.status === 'open') return null;
 
@@ -110,9 +112,22 @@ function Signoff({ data, reload }: { data: PeriodData; reload: () => void }) {
     act(() => post(`/api/periods/${p.id}/services/${s.id}/unpublish`));
   const approve = (s: SignoffService) => act(() => post(`/api/periods/${p.id}/approvals`, { kind: 'service', serviceId: s.id }));
   const withdraw = (s: SignoffService) => act(() => post(`/api/periods/${p.id}/approvals/withdraw`, { kind: 'service', serviceId: s.id }));
+  // Ask surgeons to review and approve again: their approve card comes back in the app.
+  const reset = (body: { userId?: string; serviceId?: string }, question: string) =>
+    confirm(`${question}\n\nThey’ll see “Please check your schedule” in the app again and can re-approve.`) &&
+    act(() => post(`/api/periods/${p.id}/approvals/reset`, body));
+  const anyApproved = signoff.data.services.some((s) => s.surgeons.some((u) => u.approval));
 
   return (
     <div className="card" style={{ padding: 0 }}>
+      {isSuper && anyApproved && (
+        <div className="row" style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
+          <span className="muted small" style={{ flex: 1 }}>
+            Sent out a revised schedule? Clear everyone’s approval so they check it again.
+          </span>
+          <button onClick={() => reset({}, 'Ask every surgeon to review and approve again?')}>Ask everyone to approve again</button>
+        </div>
+      )}
       {error && <div className="alert error" style={{ margin: 12 }}>{error}</div>}
       <table>
         <thead>
@@ -157,11 +172,28 @@ function Signoff({ data, reload }: { data: PeriodData; reload: () => void }) {
                           <tr key={u.id}>
                             <td>{u.name}</td>
                             <td><ApprovalText a={u.approval} who="" /></td>
+                            <td>
+                              {s.canApprove && u.approval && (
+                                <button className="link" onClick={() => reset({ userId: u.id }, `Ask ${u.name} to review and approve again?`)}>
+                                  Reset
+                                </button>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </details>
+                  {s.canApprove && s.surgeons.some((u) => u.approval) && (
+                    <div className="small" style={{ marginTop: 4 }}>
+                      <button
+                        className="link"
+                        onClick={() => reset({ serviceId: s.id }, `Ask everyone on ${s.name} to review and approve again?`)}
+                      >
+                        Reset approvals
+                      </button>
+                    </div>
+                  )}
                 </td>
                 <td>
                   {s.published ? (

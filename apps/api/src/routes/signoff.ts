@@ -195,6 +195,35 @@ export function signoffRoutes(app: FastifyInstance, db: Db) {
     return { ok: true };
   });
 
+  /**
+   * Ask surgeons to review and approve again (e.g. after sending out a revised
+   * schedule): clears their approvals so the approve card comes back in the
+   * app. One surgeon, everyone in a service, or everyone. The overall admin
+   * can reset anyone; a team scheduler, surgeons in their own services.
+   */
+  app.post<{ Params: { id: string } }>('/api/periods/:id/approvals/reset', async (req) => {
+    const user = me(req);
+    const p = period(req);
+    const body = parse(z.object({ userId: z.string().optional(), serviceId: z.string().optional() }), req.body);
+    const surgeons = listUsers(db).filter((u) => u.takesCall);
+    // Surgeons this user may reset: everyone (admin), or those in a service they schedule.
+    const mine = (u: User) => user.role === 'admin' || u.serviceIds.some((id) => user.adminServiceIds.includes(id));
+    let targets: User[];
+    if (body.userId) targets = surgeons.filter((u) => u.id === body.userId);
+    else if (body.serviceId) {
+      if (!canEditService(user, body.serviceId)) throw httpError(403, 'You can only reset your own team’s approvals');
+      targets = surgeons.filter((u) => u.serviceIds.includes(body.serviceId!));
+    } else {
+      if (user.role !== 'admin') throw httpError(403, 'Only the overall admin can reset everyone');
+      targets = surgeons;
+    }
+    if (targets.some((u) => !mine(u))) throw httpError(403, 'You can only reset surgeons on your own team');
+    const del = db.prepare("DELETE FROM approvals WHERE period_id = ? AND kind = 'surgeon' AND subject = ?");
+    let reset = 0;
+    for (const u of targets) reset += Number(del.run(p.id, u.id).changes);
+    return { reset };
+  });
+
   /** Your own sign-offs, for the app. */
   app.get('/api/me/approvals', async (req) => {
     const user = me(req);

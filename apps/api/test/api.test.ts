@@ -468,6 +468,17 @@ describe('per-service publishing and sign-offs', () => {
     // A surgeon's approval can't be taken back.
     expect((await call(s1, 'POST', `/api/periods/${p.id}/approvals/withdraw`, { kind: 'surgeon' })).status).toBe(409);
     expect((await call(s1, 'GET', '/api/me/approvals')).body).toHaveLength(1);
+    // …but schedulers can ask for it again: one surgeon, a service, or (admin) everyone.
+    expect((await call(s5, 'POST', `/api/periods/${p.id}/approvals/reset`, { userId: id('s1@x.org') })).status).toBe(403);
+    expect((await call(s2, 'POST', `/api/periods/${p.id}/approvals/reset`, {})).status).toBe(403);
+    expect((await call(s2, 'POST', `/api/periods/${p.id}/approvals/reset`, { serviceId: 'general' })).status).toBe(403);
+    expect((await call(s2, 'POST', `/api/periods/${p.id}/approvals/reset`, { userId: id('s1@x.org') })).body.reset).toBe(1);
+    expect((await call(s1, 'GET', '/api/me/approvals')).body).toHaveLength(0);
+    await call(s1, 'POST', `/api/periods/${p.id}/approvals`, { kind: 'surgeon', note: 'Looks good' });
+    await call(s5, 'POST', `/api/periods/${p.id}/approvals`, { kind: 'surgeon' });
+    expect((await call(adminToken, 'POST', `/api/periods/${p.id}/approvals/reset`, { serviceId: 'hand' })).body.reset).toBe(1);
+    expect((await call(adminToken, 'POST', `/api/periods/${p.id}/approvals/reset`, {})).body.reset).toBe(1);
+    await call(s1, 'POST', `/api/periods/${p.id}/approvals`, { kind: 'surgeon', note: 'Looks good' });
     const s1General = sched.assignments.find((a: any) => a.userId === id('s1@x.org') && a.shiftId.startsWith('general:'));
     await call(adminToken, 'PUT', `/api/periods/${p.id}/assignments/${encodeURIComponent(s1General.shiftId)}`, { userId: id('s8@x.org') });
     expect((await call(s1, 'GET', '/api/me/approvals')).body[0].current).toBe(false);
