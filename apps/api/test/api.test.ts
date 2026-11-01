@@ -305,7 +305,8 @@ describe('viewer role and shift trades', () => {
     await call(adminToken, 'POST', `/api/periods/${p.id}/optimize`, { seed: 1, kinds: ['weekend'] });
     const users = (await call(adminToken, 'GET', '/api/users')).body;
     const tokenOf = (id: string) => surgeonTokens[Number(users.find((u: any) => u.id === id).email.match(/s(\d)@/)[1]) - 1];
-    const owner = async () => new Map((await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`)).body.assignments.map((a: any) => [a.shiftId, a.userId]));
+    const owner = async () =>
+      new Map<string, string>((await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`)).body.assignments.map((a: any) => [a.shiftId, a.userId]));
     let who = await owner();
     const w1 = 'general:weekend:2027-07-09';
     const a = who.get(w1) as string;
