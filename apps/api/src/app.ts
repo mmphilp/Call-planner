@@ -37,6 +37,8 @@ export interface AppOptions {
   appDir?: string;
   /** Set when running behind a reverse proxy or tunnel, so client IPs are real. */
   trustProxy?: boolean;
+  /** Who to contact about sign-in problems, shown on the sign-in pages. */
+  supportEmail?: string;
 }
 
 export async function buildApp(opts: AppOptions) {
@@ -65,6 +67,8 @@ export async function buildApp(opts: AppOptions) {
   });
 
   app.get('/health', { config: { public: true } }, async () => ({ ok: true }));
+  // Public details for the sign-in pages.
+  app.get('/api/info', { config: { public: true } }, async () => ({ supportEmail: opts.supportEmail || null }));
   peopleRoutes(app, db);
   periodRoutes(app, db);
   requestRoutes(app, db);

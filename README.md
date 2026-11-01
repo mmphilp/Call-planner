@@ -119,7 +119,7 @@ On any Linux box with Docker and Docker Compose (a homelab server, NAS or VM):
 git clone https://github.com/mmphilp/Call-planner.git
 cd Call-planner
 cp .env.example .env
-nano .env            # set JWT_SECRET (openssl rand -base64 48), ADMIN_EMAIL, ADMIN_PASSWORD
+nano .env            # set JWT_SECRET (openssl rand -base64 48), ADMIN_EMAIL, ADMIN_PASSWORD, SUPPORT_EMAIL
 docker compose up -d --build
 ```
 

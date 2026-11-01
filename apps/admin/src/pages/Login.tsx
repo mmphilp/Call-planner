@@ -1,11 +1,18 @@
-import { useState, type FormEvent } from 'react';
-import { auth, post, type User } from '../api';
+import { useEffect, useState, type FormEvent } from 'react';
+import { auth, get, post, type User } from '../api';
 
 export function Login({ onSignedIn }: { onSignedIn: (u: User) => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [supportEmail, setSupportEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    get<{ supportEmail: string | null }>('/api/info')
+      .then((i) => setSupportEmail(i.supportEmail))
+      .catch(() => {});
+  }, []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -42,6 +49,11 @@ export function Login({ onSignedIn }: { onSignedIn: (u: User) => void }) {
         <button className="primary" disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
+        {supportEmail && (
+          <p className="muted small" style={{ textAlign: 'center', margin: 0 }}>
+            Can’t sign in? Email <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
+          </p>
+        )}
       </form>
     </div>
   );

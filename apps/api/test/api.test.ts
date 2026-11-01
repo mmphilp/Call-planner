@@ -43,6 +43,12 @@ beforeEach(async () => {
 });
 
 describe('auth', () => {
+  it('shows the support contact on the sign-in page without signing in', async () => {
+    expect((await call(null, 'GET', '/api/info')).body).toEqual({ supportEmail: null });
+    const other = (await buildApp({ jwtSecret: 'test', supportEmail: 'help@x.org' })).app;
+    expect((await other.inject({ url: '/api/info' })).json()).toEqual({ supportEmail: 'help@x.org' });
+  });
+
   it('rejects bad passwords and missing tokens', async () => {
     expect((await call(null, 'POST', '/api/auth/login', { email: 's1@x.org', password: 'nope' })).status).toBe(401);
     expect((await call(null, 'GET', '/api/me')).status).toBe(401);

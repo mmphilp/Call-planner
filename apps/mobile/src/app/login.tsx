@@ -1,8 +1,9 @@
 import { Redirect } from 'expo-router';
-import { useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Image, KeyboardAvoidingView, Linking, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, ErrorText } from '@/components/ui';
+import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useTheme } from '@/lib/theme';
 
@@ -13,6 +14,13 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [supportEmail, setSupportEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    api<{ supportEmail: string | null }>('GET', '/api/info')
+      .then((i) => setSupportEmail(i.supportEmail))
+      .catch(() => {});
+  }, []);
 
   if (user) return <Redirect href="/" />;
 
@@ -64,8 +72,18 @@ export default function LoginScreen() {
           onSubmitEditing={submit}
         />
         <Button label="Sign in" onPress={submit} busy={busy} disabled={!email || !password} />
-        <Text style={{ color: t.muted, textAlign: 'center', marginTop: 8 }}>
-          Your scheduler sets up your account. Ask them if you can’t sign in.
+        <Text style={{ color: t.muted, textAlign: 'center', marginTop: 8, lineHeight: 20 }}>
+          Your scheduler sets up your account.{' '}
+          {supportEmail ? (
+            <>
+              Can’t sign in? Email{' '}
+              <Text style={{ color: t.accent }} onPress={() => Linking.openURL(`mailto:${supportEmail}`)}>
+                {supportEmail}
+              </Text>
+            </>
+          ) : (
+            'Ask them if you can’t sign in.'
+          )}
         </Text>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -73,7 +91,8 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, justifyContent: 'center', padding: 24, gap: 12 },
+  // Narrow column, centered, so it reads well on an iPad or a computer too.
+  wrap: { flex: 1, justifyContent: 'center', padding: 24, gap: 12, width: '100%', maxWidth: 420, alignSelf: 'center' },
   title: { fontSize: 34, fontWeight: '700' },
   // Brand tile: the white mark on the logo's cherry red, in both themes.
   logo: { width: 72, height: 72, borderRadius: 16, backgroundColor: '#90021e', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
