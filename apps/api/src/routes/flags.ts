@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Db } from '../db';
 import { canEditShift, canView, httpError, me, parse } from '../http';
-import { getPeriod, listPeriods, listServices, listUsers, type User } from '../repo';
+import { getPeriod, isLive, listPeriods, listServices, listUsers, type User } from '../repo';
 
 type FlagStatus = 'open' | 'fixed' | 'no_change' | 'withdrawn';
 
@@ -81,10 +81,11 @@ export function flagRoutes(app: FastifyInstance, db: Db) {
     const user = me(req);
     if (user.role === 'viewer') throw httpError(403, 'View-only accounts can’t flag assignments');
     const body = parse(z.object({ shiftId: z.string(), note: z.string().trim().min(1, 'Say what looks wrong').max(1000) }), req.body);
-    const shift = db.prepare('SELECT * FROM shifts WHERE id = ?').get(body.shiftId) as { id: string; period_id: string } | undefined;
+    const shift = db.prepare('SELECT * FROM shifts WHERE id = ?').get(body.shiftId) as { id: string; period_id: string; service_id: string } | undefined;
     if (!shift) throw httpError(404, 'Shift not found');
     const period = getPeriod(db, shift.period_id);
     if (period?.status !== 'review') throw httpError(409, 'This schedule isn’t out for review');
+    if (isLive(period, shift.service_id)) throw httpError(409, 'This service’s schedule is already published');
     if (db.prepare("SELECT 1 FROM flags WHERE shift_id = ? AND user_id = ? AND status = 'open'").get(shift.id, user.id)) {
       throw httpError(409, 'You’ve already flagged this shift');
     }

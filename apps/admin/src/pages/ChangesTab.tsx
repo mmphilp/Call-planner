@@ -65,7 +65,14 @@ export function ChangesTab({ periodId }: { periodId: string }) {
                   <td>{e.by?.name ?? '—'}</td>
                   {e.action === 'status' ? (
                     <td colSpan={2}>
-                      <span className={`badge ${e.status ?? ''}`}>{STATUS_EVENT[e.status ?? ''] ?? (e.status ? STATUS_LABEL[e.status] : '')}</span>
+                      {e.service ? (
+                        <>
+                          <b>{e.service.name}</b>{' '}
+                          <span className={`badge ${e.status ?? ''}`}>{e.status === 'published' ? 'Published on its own' : 'Unpublished'}</span>
+                        </>
+                      ) : (
+                        <span className={`badge ${e.status ?? ''}`}>{STATUS_EVENT[e.status ?? ''] ?? (e.status ? STATUS_LABEL[e.status] : '')}</span>
+                      )}
                     </td>
                   ) : (
                     <>

@@ -1,9 +1,10 @@
 import { Redirect, router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
+import { ApprovalCard } from '@/components/ApprovalCard';
 import { MyCalendar, shiftsOnDay } from '@/components/MyCalendar';
 import { Badge, Card, Chip, Empty, ErrorText, Screen, SectionHeader, T, useApi } from '@/components/ui';
-import { api, type MyShift, type Period } from '@/lib/api';
+import { api, type MyApproval, type MyShift, type Period } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { holidayMap, kindLabel, monthLabel, nowLocal, shiftSpan, longDate, todayStr } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
@@ -19,12 +20,13 @@ export default function MyCallScreen() {
   const t = useTheme();
   const thisMonth = todayStr().slice(0, 7);
   // All your shifts, past and future, so the calendar and Past list can go back in time.
-  const { data, error, refreshing, refresh } = useApi(async () => {
-    const [shifts, periods] = await Promise.all([
+  const { data, error, refreshing, refresh, reload } = useApi(async () => {
+    const [shifts, periods, approvals] = await Promise.all([
       api<MyShift[]>('GET', '/api/me/shifts'),
       api<Period[]>('GET', '/api/periods'),
+      api<MyApproval[]>('GET', '/api/me/approvals'),
     ]);
-    return { shifts, periods };
+    return { shifts, periods, approvals };
   });
   const [mode, setMode] = useState<'list' | 'past' | 'calendar'>('list');
   const [month, setMonth] = useState(thisMonth);
@@ -59,14 +61,18 @@ export default function MyCallScreen() {
       onRefresh={refresh}
     >
       <ErrorText message={error} />
+      {/* Schedules out for review: approve your own call (surgeons who take call). */}
+      {user?.takesCall &&
+        data?.periods
+          .filter((p) => p.status === 'review')
+          .map((p) => (
+            <ApprovalCard key={p.id} period={p} approval={data.approvals.find((a) => a.periodId === p.id)} onChange={reload} />
+          ))}
       {proposed && (
-        <Card style={{ gap: 4, borderColor: t.warn }}>
-          <T bold>Proposed schedule — please check it</T>
-          <T muted size={13}>
-            Shifts marked Proposed aren’t final yet. If one looks wrong, tap it to flag it for the scheduler. Anything in the group
-            schedule can be flagged from the Schedule tab.
-          </T>
-        </Card>
+        <T muted size={13}>
+          Shifts marked Proposed aren’t final yet: tap one to flag a problem. Anything in the group schedule can be flagged from the
+          Schedule tab.
+        </T>
       )}
       {data && mode === 'list' && !shifts.length && (
         <Empty title="No upcoming call" body="Your shifts appear here once the scheduler publishes the schedule." />

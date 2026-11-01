@@ -1,6 +1,7 @@
 import { longDate, longSpan } from '@call-planner/core';
 import { useState } from 'react';
-import { post, type Flag } from '../api';
+import { get, post, type Approval, type Flag, type SignoffService } from '../api';
+import { useLoad } from '../useLoad';
 import type { PeriodData } from './Period';
 
 const KIND = { day: 'day call', night: 'night call', weekend: 'weekend' } as const;
@@ -24,15 +25,19 @@ export function ReviewTab({ data, reload }: { data: PeriodData; reload: () => vo
   return (
     <>
       <div className="card">
-        <h2>Review</h2>
+        <h2>Review &amp; sign-off</h2>
         <p className="muted small" style={{ marginBottom: 0 }}>
           {p.status === 'review'
-            ? 'Surgeons can see this proposed schedule in the app and flag any assignment they think is wrong. Fix it on the Schedule tab, then mark each flag below. Publish from the Overview tab when you’re done.'
+            ? 'Surgeons can see this proposed schedule in the app, flag any assignment they think is wrong, and approve their own schedule. Fix flags on the Schedule tab, then mark each one below. '
             : p.status === 'published'
-              ? 'This schedule is published. Flags sent while it was in review are below.'
-              : 'Send the schedule for review from the Overview tab: surgeons will see it as proposed and can flag assignments here before you publish.'}
+              ? 'This schedule is published. Sign-offs and flags from review are below. '
+              : 'Send the schedule for review from the Overview tab: surgeons will see it as proposed, can flag assignments and approve their own schedule. '}
+          Each service’s scheduler signs off their service, and can publish it on its own once it’s ready; a published service is
+          final for its surgeons and re-optimizing leaves it alone.
         </p>
       </div>
+
+      <Signoff data={data} reload={reload} />
 
       <div className="card">
         <h2>Open flags {open.length > 0 && <span className="badge pending">{open.length}</span>}</h2>
@@ -51,6 +56,138 @@ export function ReviewTab({ data, reload }: { data: PeriodData; reload: () => vo
         </div>
       )}
     </>
+  );
+}
+
+const shortDate = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
+/** One sign-off: approved (still current, or changed since), or not yet. */
+function ApprovalText({ a, who }: { a: Approval | null; who?: string }) {
+  if (!a) return <span className="muted">Not yet</span>;
+  const by = who ?? a.by?.name;
+  return a.current ? (
+    <span title={a.note || undefined}>
+      <span className="badge approved">Approved</span> <span className="small muted">{by ? `${by}, ` : ''}{shortDate(a.at)}</span>
+    </span>
+  ) : (
+    <span title="The schedule changed after this was approved">
+      <span className="badge pending">Changed since approved</span> <span className="small muted">{shortDate(a.at)}</span>
+    </span>
+  );
+}
+
+/**
+ * Each service: published on its own or not, its scheduler's sign-off, and
+ * how many of its surgeons approved. The overall admin sees every service;
+ * a team scheduler sees their own.
+ */
+function Signoff({ data, reload }: { data: PeriodData; reload: () => void }) {
+  const p = data.schedule.period;
+  const signoff = useLoad(
+    () => get<{ services: SignoffService[] }>(`/api/periods/${p.id}/signoff`),
+    [p.id, p.status, data.schedule.assignments.length, p.publishedServiceIds.join()],
+  );
+  const [error, setError] = useState<string | null>(null);
+  if (signoff.error || !signoff.data) return signoff.error ? null : <div className="muted">Loading…</div>;
+  if (p.status === 'draft' || p.status === 'open') return null;
+
+  const act = async (fn: () => Promise<unknown>) => {
+    setError(null);
+    try {
+      await fn();
+      signoff.reload();
+      reload();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  const publish = (s: SignoffService) =>
+    confirm(
+      `Publish ${s.name}’s schedule now?\n\nIts surgeons see it as final in the app and their calendars, and can swap shifts. Re-optimizing leaves it alone. The rest of the schedule stays as it is.`,
+    ) && act(() => post(`/api/periods/${p.id}/services/${s.id}/publish`));
+  const unpublish = (s: SignoffService) =>
+    confirm(`Unpublish ${s.name}? Its surgeons see it as proposed (or not at all) again, and it leaves their calendars.`) &&
+    act(() => post(`/api/periods/${p.id}/services/${s.id}/unpublish`));
+  const approve = (s: SignoffService) => act(() => post(`/api/periods/${p.id}/approvals`, { kind: 'service', serviceId: s.id }));
+  const withdraw = (s: SignoffService) => act(() => post(`/api/periods/${p.id}/approvals/withdraw`, { kind: 'service', serviceId: s.id }));
+
+  return (
+    <div className="card" style={{ padding: 0 }}>
+      {error && <div className="alert error" style={{ margin: 12 }}>{error}</div>}
+      <table>
+        <thead>
+          <tr>
+            <th>Service</th>
+            <th>Scheduler sign-off</th>
+            <th>Surgeons approved</th>
+            <th>Published</th>
+          </tr>
+        </thead>
+        <tbody>
+          {signoff.data.services.map((s) => {
+            const ok = s.surgeons.filter((u) => u.approval?.current).length;
+            const stale = s.surgeons.filter((u) => u.approval && !u.approval.current).length;
+            return (
+              <tr key={s.id} className="change-row">
+                <td>
+                  <span className="svc-dot" style={{ background: s.color }} />
+                  <b>{s.name}</b>
+                  {s.coversWeekend && <div className="small muted">Weekends</div>}
+                </td>
+                <td>
+                  <ApprovalText a={s.approval} />
+                  {s.canApprove && (
+                    <div className="row small" style={{ marginTop: 4 }}>
+                      {(!s.approval || !s.approval.current) && (
+                        <button className="link" onClick={() => approve(s)}>{s.approval ? 'Approve again' : 'Approve'}</button>
+                      )}
+                      {s.approval && <button className="link danger" onClick={() => withdraw(s)}>Withdraw</button>}
+                    </div>
+                  )}
+                </td>
+                <td>
+                  <details>
+                    <summary>
+                      {ok} of {s.surgeons.length}
+                      {stale > 0 && <span className="badge pending" style={{ marginLeft: 6 }}>{stale} changed since</span>}
+                    </summary>
+                    <table className="small" style={{ marginTop: 6 }}>
+                      <tbody>
+                        {s.surgeons.map((u) => (
+                          <tr key={u.id}>
+                            <td>{u.name}</td>
+                            <td><ApprovalText a={u.approval} who="" /></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </details>
+                </td>
+                <td>
+                  {s.published ? (
+                    <>
+                      <span className="badge published">Published</span>{' '}
+                      <span className="small muted">
+                        {s.published.whole ? 'with the whole schedule' : `${s.published.by?.name ?? ''}${s.published.at ? `, ${shortDate(s.published.at)}` : ''}`}
+                      </span>
+                      {s.canPublish && !s.published.whole && (
+                        <div className="small" style={{ marginTop: 4 }}>
+                          <button className="link danger" onClick={() => unpublish(s)}>Unpublish</button>
+                        </div>
+                      )}
+                    </>
+                  ) : s.canPublish ? (
+                    <button onClick={() => publish(s)}>Publish {s.name}</button>
+                  ) : (
+                    <span className="muted">Not yet</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

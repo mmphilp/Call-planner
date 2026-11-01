@@ -42,8 +42,12 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
   const published = p.status === 'published';
   const editable = !published;
   const changed = useMemo(() => new Set(schedule.changedShiftIds ?? []), [schedule.changedShiftIds]);
-  /** On a published schedule, check before a change goes live. */
-  const goLive = (what: string) => !published || confirm(`${what}\n\nThis schedule is published, so the change goes live in the app and calendars straight away, and is recorded in the change log.`);
+  // Services published on their own: final, left alone by optimize and clear.
+  const liveServices = new Set(p.publishedServiceIds ?? []);
+  /** On a published schedule (or service), check before a change goes live. */
+  const goLive = (what: string, serviceId?: string) =>
+    !(published || (serviceId && liveServices.has(serviceId))) ||
+    confirm(`${what}\n\nThis is published, so the change goes live in the app and calendars straight away, and is recorded in the change log.`);
   const [month, setMonth] = useState(Number(p.startDate.slice(5, 7)) - 1);
   const [highlight, setHighlight] = useState('');
   const [busy, setBusy] = useState(false);
@@ -124,7 +128,7 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
     if (locked === undefined) {
       const s = shiftById.get(shiftId);
       const who = userId ? nameOf.get(userId) : 'nobody';
-      if (s && !goLive(`Put ${who} on ${longDate(s.date)}?`)) return reload();
+      if (s && !goLive(`Put ${who} on ${longDate(s.date)}?`, s.serviceId)) return reload();
     }
     setError(null);
     try {
@@ -136,7 +140,7 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
   };
 
   const setCover = async (shiftId: string, coveredBy: string | null) => {
-    if (!goLive(coveredBy ? `Mark this shift as covered by ${coveredBy}?` : 'Remove the locum cover?')) return;
+    if (!goLive(coveredBy ? `Mark this shift as covered by ${coveredBy}?` : 'Remove the locum cover?', shiftById.get(shiftId)?.serviceId)) return;
     setError(null);
     try {
       await put(`/api/periods/${p.id}/shifts/${encodeURIComponent(shiftId)}/cover`, { coveredBy });
@@ -248,6 +252,12 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
             </select>
           </label>
         </div>
+        {!published && liveServices.size > 0 && (
+          <p className="muted small">
+            Published on their own: <b>{schedule.services.filter((s) => liveServices.has(s.id)).map((s) => s.name).join(', ')}</b>. Optimize and
+            Clear leave them alone; single-shift changes to them go live and are logged.
+          </p>
+        )}
         {published && (
           <p className="muted small">
             This schedule is published. You can still change a single shift: it goes live straight away and is recorded in the change

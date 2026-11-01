@@ -39,6 +39,8 @@ export interface Period {
   holidays: { date: string; name: string }[];
   rules: Partial<Rules>;
   publishedAt: string | null;
+  /** Services published on their own ahead of the whole schedule. */
+  publishedServiceIds: string[];
 }
 
 export interface RequestRow extends CallRequest {
@@ -73,10 +75,34 @@ export interface ChangeEntry {
   /** How a shift changed: by hand, an approved swap, or while unpublished (found on republishing). */
   via: 'edit' | 'swap' | 'republish' | null;
   status: PeriodStatus | null;
+  /** For a status event that applies to one service (published on its own). */
+  service: { id: string; name: string } | null;
   shift: TradeShift | null;
   from: { user: { id: string; name: string } | null; cover: string | null } | null;
   to: { user: { id: string; name: string } | null; cover: string | null } | null;
   note: string;
+}
+
+/** A sign-off: who approved, when, and whether it still matches the schedule. */
+export interface Approval {
+  at: string;
+  note: string;
+  by?: { id: string; name: string } | null;
+  /** False when the schedule changed after it was approved. */
+  current: boolean;
+}
+
+/** One service's publish state and sign-offs (GET /api/periods/:id/signoff). */
+export interface SignoffService {
+  id: string;
+  name: string;
+  color: string;
+  coversWeekend: boolean;
+  published: { at: string | null; by: { id: string; name: string } | null; whole: boolean } | null;
+  canPublish: boolean;
+  approval: Approval | null;
+  canApprove: boolean;
+  surgeons: { id: string; name: string; approval: Approval | null }[];
 }
 
 export interface TradeShift {

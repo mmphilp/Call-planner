@@ -179,6 +179,31 @@ CREATE TABLE IF NOT EXISTS change_log (
 );
 CREATE INDEX IF NOT EXISTS change_log_period ON change_log(period_id, at);
 
+-- Services published ahead of the whole schedule: final for surgeons
+-- (calendars, swaps), left alone by re-optimizing, edits logged.
+CREATE TABLE IF NOT EXISTS published_services (
+  period_id TEXT NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+  service_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+  published_at TEXT NOT NULL,
+  published_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  PRIMARY KEY (period_id, service_id)
+);
+
+-- Sign-offs: a surgeon approving their own schedule ('surgeon', subject = user
+-- id) or a service scheduler approving their service ('service', subject =
+-- service id). The fingerprint is of the assignments approved, so a later
+-- change shows as "changed since approved".
+CREATE TABLE IF NOT EXISTS approvals (
+  period_id TEXT NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('surgeon', 'service')),
+  subject TEXT NOT NULL,
+  approved_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  fingerprint TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (period_id, kind, subject)
+);
+
 -- Each schedule's assignments as last published, to log what changed while
 -- it was unpublished when it's published again.
 CREATE TABLE IF NOT EXISTS publish_snapshot (

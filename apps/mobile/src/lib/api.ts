@@ -30,6 +30,8 @@ export interface Period {
   /** 'review': a proposed schedule surgeons can check and flag before it's final. */
   status: 'draft' | 'open' | 'closed' | 'review' | 'published';
   requestDeadline: string | null;
+  /** Services published on their own ahead of the whole schedule (final for their surgeons). */
+  publishedServiceIds?: string[];
   /** Holiday markers: actual dates, and the hospital's observed days when they differ. */
   calendarHolidays: { date: string; name: string; observed: boolean }[];
 }
@@ -111,6 +113,14 @@ export interface Flag {
   status: 'open' | 'fixed' | 'no_change' | 'withdrawn';
   adminNote: string;
   createdAt: string;
+}
+
+/** Your sign-off on a schedule; current is false if your shifts changed after you approved. */
+export interface MyApproval {
+  periodId: string;
+  at: string;
+  note: string;
+  current: boolean;
 }
 
 export interface CallRequest {

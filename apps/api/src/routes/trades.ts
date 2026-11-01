@@ -4,7 +4,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { transaction, type Db } from '../db';
 import { canEditShift, canView, httpError, me, parse } from '../http';
-import { getPeriod, listAssignments, listServices, listUsers, type User } from '../repo';
+import { getPeriod, isLive, listAssignments, listServices, listUsers, type User } from '../repo';
 import { holderOf, logShiftChange } from '../changelog';
 import { evaluatePeriod, refreshCover } from '../sync';
 
@@ -60,7 +60,8 @@ export function tradeRoutes(app: FastifyInstance, db: Db) {
   /** A future shift in a published schedule. */
   const tradeable = (s: ShiftRow | undefined, what: string) => {
     if (!s) throw httpError(404, `${what} not found`);
-    if (getPeriod(db, s.period_id)?.status !== 'published') throw httpError(409, 'Only published schedules can be traded');
+    const p = getPeriod(db, s.period_id);
+    if (!p || !isLive(p, s.service_id)) throw httpError(409, 'Only published schedules can be traded');
     if (s.start <= nowLocal()) throw httpError(409, `${what} has already started`);
     return s;
   };

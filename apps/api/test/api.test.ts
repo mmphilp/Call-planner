@@ -419,6 +419,92 @@ describe('changes after publishing', () => {
   }, 60_000);
 });
 
+describe('per-service publishing and sign-offs', () => {
+  it('publishes a service on its own and tracks surgeon and scheduler approvals', async () => {
+    const { body: p } = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2 });
+    await call(adminToken, 'PATCH', `/api/periods/${p.id}`, { status: 'closed' });
+    await call(adminToken, 'POST', `/api/periods/${p.id}/optimize`, { seed: 1 });
+    const users = (await call(adminToken, 'GET', '/api/users')).body;
+    const id = (email: string) => users.find((u: any) => u.email === email).id;
+    // s2 schedules Hand (s1–s4 cover Hand and General; s5–s8 only General).
+    await call(adminToken, 'PATCH', `/api/users/${id('s2@x.org')}`, { adminServiceIds: ['hand'] });
+    const [s1, s2, , , s5] = surgeonTokens;
+
+    // The team scheduler publishes Hand ahead of everything else; not General.
+    expect((await call(s2, 'POST', `/api/periods/${p.id}/services/general/publish`)).status).toBe(403);
+    expect((await call(s5, 'POST', `/api/periods/${p.id}/services/hand/publish`)).status).toBe(403);
+    expect((await call(s2, 'POST', `/api/periods/${p.id}/services/hand/publish`)).body.publishedServiceIds).toEqual(['hand']);
+
+    // Surgeons see just Hand so far, as final: in My Call and their calendar.
+    const seen = (await call(s5, 'GET', `/api/periods/${p.id}/schedule`)).body;
+    expect(new Set(seen.shifts.map((x: any) => x.serviceId))).toEqual(new Set(['hand']));
+    expect(seen.assignments.length).toBe(seen.shifts.length);
+    const mine = (await call(s1, 'GET', '/api/me/shifts?from=2027-07-01')).body;
+    expect(mine.length).toBeGreaterThan(0);
+    expect(mine.every((x: any) => x.serviceId === 'hand' && !x.proposed)).toBe(true);
+    const me1 = (await call(s1, 'GET', '/api/me')).body;
+    expect((await app.inject({ url: me1.calendarPath })).body).toContain('Hand');
+
+    // Re-optimizing everything leaves the published service alone.
+    const handBefore = (await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`)).body.assignments
+      .filter((a: any) => a.shiftId.startsWith('hand:')).map((a: any) => `${a.shiftId}=${a.userId}`).sort();
+    await call(adminToken, 'POST', `/api/periods/${p.id}/optimize`, { seed: 7 });
+    const sched = (await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`)).body;
+    expect(sched.assignments.filter((a: any) => a.shiftId.startsWith('hand:')).map((a: any) => `${a.shiftId}=${a.userId}`).sort()).toEqual(handBefore);
+    // Holidays and rebuilds would change published shifts, so they're blocked.
+    expect((await call(adminToken, 'POST', `/api/periods/${p.id}/generate`)).status).toBe(409);
+
+    // Out for review: General is proposed and can be flagged; Hand is final.
+    await call(adminToken, 'PATCH', `/api/periods/${p.id}`, { status: 'review' });
+    const inReview = (await call(s1, 'GET', '/api/me/shifts?from=2027-07-01')).body;
+    expect(inReview.some((x: any) => x.serviceId === 'general' && x.proposed)).toBe(true);
+    expect(inReview.filter((x: any) => x.serviceId === 'hand').every((x: any) => !x.proposed)).toBe(true);
+    const handShift = sched.assignments.find((a: any) => a.shiftId.startsWith('hand:')).shiftId;
+    expect((await call(s1, 'POST', '/api/flags', { shiftId: handShift, note: 'x' })).status).toBe(409);
+
+    // Surgeons approve their own schedule; it shows as changed if their shifts move.
+    expect((await call(s1, 'POST', `/api/periods/${p.id}/approvals`, { kind: 'surgeon', note: 'Looks good' })).status).toBe(201);
+    expect((await call(s1, 'GET', '/api/me/approvals')).body).toMatchObject([{ periodId: p.id, note: 'Looks good', current: true }]);
+    const s1General = sched.assignments.find((a: any) => a.userId === id('s1@x.org') && a.shiftId.startsWith('general:'));
+    await call(adminToken, 'PUT', `/api/periods/${p.id}/assignments/${encodeURIComponent(s1General.shiftId)}`, { userId: id('s8@x.org') });
+    expect((await call(s1, 'GET', '/api/me/approvals')).body[0].current).toBe(false);
+
+    // Schedulers approve their own service; the admin any.
+    expect((await call(s2, 'POST', `/api/periods/${p.id}/approvals`, { kind: 'service', serviceId: 'general' })).status).toBe(403);
+    expect((await call(s2, 'POST', `/api/periods/${p.id}/approvals`, { kind: 'service', serviceId: 'hand' })).status).toBe(201);
+    expect((await call(adminToken, 'POST', `/api/periods/${p.id}/approvals`, { kind: 'service', serviceId: 'general' })).status).toBe(201);
+
+    // Who sees what: the team scheduler sees Hand and its surgeons; the admin everything; surgeons nothing.
+    expect((await call(s5, 'GET', `/api/periods/${p.id}/signoff`)).status).toBe(403);
+    const team = (await call(s2, 'GET', `/api/periods/${p.id}/signoff`)).body;
+    expect(team.services.map((x: any) => x.id)).toEqual(['hand']);
+    expect(team.services[0]).toMatchObject({ published: { by: { name: 'Surgeon 2' } }, approval: { by: { name: 'Surgeon 2' }, current: true }, canPublish: true });
+    expect(team.services[0].surgeons.map((x: any) => x.name)).toEqual(['Surgeon 1', 'Surgeon 2', 'Surgeon 3', 'Surgeon 4']);
+    expect(team.services[0].surgeons[0].approval).toMatchObject({ current: false, note: 'Looks good' });
+    const all = (await call(adminToken, 'GET', `/api/periods/${p.id}/signoff`)).body;
+    expect(all.services.map((x: any) => x.id).sort()).toEqual(['general', 'hand']);
+    expect(all.services.find((x: any) => x.id === 'general')).toMatchObject({ published: null, approval: { current: true } });
+    expect(all.services.find((x: any) => x.id === 'general').surgeons).toHaveLength(8);
+
+    // A later change to General shows the admin's approval as out of date.
+    await call(adminToken, 'PUT', `/api/periods/${p.id}/assignments/${encodeURIComponent(s1General.shiftId)}`, { userId: id('s7@x.org') });
+    expect((await call(adminToken, 'GET', `/api/periods/${p.id}/signoff`)).body.services.find((x: any) => x.id === 'general').approval.current).toBe(false);
+
+    // Unpublishing a service puts it back into review; publishing everything logs both.
+    await call(s2, 'POST', `/api/periods/${p.id}/services/hand/unpublish`);
+    expect((await call(s1, 'POST', '/api/flags', { shiftId: handShift, note: 'Wrong?' })).status).toBe(201);
+    await call(adminToken, 'PATCH', `/api/periods/${p.id}`, { status: 'published' });
+    const log = (await call(adminToken, 'GET', `/api/periods/${p.id}/changes`)).body.filter((e: any) => e.action === 'status');
+    expect(log.map((e: any) => `${e.status}${e.service ? ` ${e.service.id}` : ''}`)).toEqual([
+      'published',
+      'closed hand',
+      'review',
+      'published hand',
+      'closed',
+    ]);
+  }, 60_000);
+});
+
 describe('viewer role and shift trades', () => {
   it('lets a viewer see everything but change nothing', async () => {
     await call(adminToken, 'POST', '/api/users', { email: 'assistant@x.org', name: 'Assistant', role: 'viewer', takesCall: false, password: 'password123' });

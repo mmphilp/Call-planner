@@ -2,7 +2,7 @@ import { isHolidayBlock } from '@call-planner/core';
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '../db';
 import { httpError } from '../http';
-import { listServices } from '../repo';
+import { LIVE_SQL, listServices } from '../repo';
 
 const KIND_LABEL = { day: 'Day call', night: 'Night call', weekend: 'Weekend call' } as const;
 
@@ -24,7 +24,7 @@ export function calendarRoutes(app: FastifyInstance, db: Db) {
     const shifts = db
       .prepare(
         `SELECT s.* FROM assignments a JOIN shifts s ON s.id = a.shift_id JOIN periods p ON p.id = s.period_id
-         WHERE a.user_id = ? AND p.status = 'published' ORDER BY s.start`,
+         WHERE a.user_id = ? AND ${LIVE_SQL} ORDER BY s.start`,
       )
       .all(user.id) as any[];
     const stamp = `${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`;

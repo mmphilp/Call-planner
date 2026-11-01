@@ -43,7 +43,11 @@ export default function ScheduleScreen() {
   const t = useTheme();
   const periods = useApi(() => api<Period[]>('GET', '/api/periods'));
   // Published schedules, and proposed ones out for review.
-  const published = useMemo(() => (periods.data ?? []).filter((p) => p.status === 'published' || p.status === 'review'), [periods.data]);
+  const published = useMemo(
+    () =>
+      (periods.data ?? []).filter((p) => p.status === 'published' || p.status === 'review' || (p.publishedServiceIds?.length ?? 0) > 0),
+    [periods.data],
+  );
   const [periodId, setPeriodId] = useState<string | null>(null);
   // The whole schedule as loaded; `schedule` below is it filtered to the services shown.
   const [full, setSchedule] = useState<Schedule | null>(null);
@@ -151,7 +155,7 @@ export default function ScheduleScreen() {
       key={s.id}
       flagged={flagged.has(s.id)}
       updated={!!full?.changedShiftIds?.includes(s.id)}
-      onPress={canFlag ? () => router.push({ pathname: '/flag', params: { shiftId: s.id, periodId: schedule!.period.id } }) : undefined}
+      onPress={canFlag && !full?.period.publishedServiceIds?.includes(s.serviceId) ? () => router.push({ pathname: '/flag', params: { shiftId: s.id, periodId: schedule!.period.id } }) : undefined}
       label={`${services.get(s.serviceId)?.name} · ${kindLabel(s)}`}
       sub={withTimes ? shiftSpan(s) : undefined}
       color={services.get(s.serviceId)?.color}
@@ -182,7 +186,7 @@ export default function ScheduleScreen() {
       {published.length > 1 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
           {published.map((p) => (
-            <Chip key={p.id} label={p.status === 'review' ? `${p.label} (proposed)` : p.label} selected={p.id === periodId} onPress={() => setPeriodId(p.id)} />
+            <Chip key={p.id} label={p.status === 'review' ? `${p.label} (proposed)` : p.status === 'published' ? p.label : `${p.label} (part published)`} selected={p.id === periodId} onPress={() => setPeriodId(p.id)} />
           ))}
         </ScrollView>
       )}

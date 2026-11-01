@@ -71,7 +71,7 @@ export function PeriodPage() {
             ['overview', 'Overview'],
             ['requests', `Requests${pending ? ` (${pending})` : ''}`],
             ['schedule', 'Schedule'],
-            ['review', `Review${openFlags ? ` (${openFlags})` : ''}`],
+            ['review', `Review & sign-off${openFlags ? ` (${openFlags})` : ''}`],
             ['swaps', `Swaps${swapsWaiting ? ` (${swapsWaiting})` : ''}`],
             ['changes', 'Changes'],
             ['fairness', 'Fairness'],
@@ -80,8 +80,8 @@ export function PeriodPage() {
         )
           // Team admins work on their weekday schedule; period setup stays with the overall admin.
           .filter(([t]) => isSuper || t === 'requests' || t === 'schedule' || t === 'review' || t === 'swaps' || t === 'fairness')
-          // Review appears once a schedule has been out for review.
-          .filter(([t]) => t !== 'review' || p.status === 'review' || data.flags.length > 0)
+          // Review & sign-off appears once the schedule is being built.
+          .filter(([t]) => t !== 'review' || (p.status !== 'draft' && p.status !== 'open'))
           // The change log is for the overall admin, once the schedule has been published.
           .filter(([t]) => t !== 'changes' || (isSuper && p.status !== 'draft' && p.status !== 'open'))
           .map(([t, label]) => (
@@ -255,6 +255,16 @@ function Overview({ data, reload, goTo }: { data: PeriodData; reload: () => void
           <h2>Status</h2>
           <table>
             <tbody>
+              {p.status !== 'published' && (p.publishedServiceIds?.length ?? 0) > 0 && (
+                <tr>
+                  <td>Services published on their own</td>
+                  <td className="num">
+                    <button className="link" onClick={() => goTo('review')}>
+                      {data.schedule.services.filter((s) => p.publishedServiceIds.includes(s.id)).map((s) => s.name).join(', ')}
+                    </button>
+                  </td>
+                </tr>
+              )}
               <tr><td>Shifts filled</td><td className="num">{assigned} / {total}</td></tr>
               <tr><td>Pending requests</td><td className="num">{pending ? <button className="link" onClick={() => goTo('requests')}>{pending}</button> : 0}</td></tr>
               {(p.status === 'review' || data.flags.length > 0) && (

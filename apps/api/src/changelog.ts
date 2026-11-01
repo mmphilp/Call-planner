@@ -61,14 +61,11 @@ export function logShiftChange(
   );
 }
 
-export function logStatus(db: Db, periodId: string, byUserId: string, status: string) {
-  db.prepare(`INSERT INTO change_log (id, period_id, at, by_user_id, action, status) VALUES (?, ?, ?, ?, 'status', ?)`).run(
-    randomUUID(),
-    periodId,
-    new Date().toISOString(),
-    byUserId,
-    status,
-  );
+/** A status event: the schedule (or one service of it, with serviceId) published, unpublished… */
+export function logStatus(db: Db, periodId: string, byUserId: string, status: string, serviceId: string | null = null) {
+  db.prepare(
+    `INSERT INTO change_log (id, period_id, at, by_user_id, action, status, service_id) VALUES (?, ?, ?, ?, 'status', ?, ?)`,
+  ).run(randomUUID(), periodId, new Date().toISOString(), byUserId, status, serviceId);
 }
 
 /**
@@ -76,12 +73,17 @@ export function logStatus(db: Db, periodId: string, byUserId: string, status: st
  * version (changes made while it was unpublished), then remember this one.
  * The first publish just takes the snapshot.
  */
-export function snapshotOnPublish(db: Db, periodId: string, byUserId: string) {
-  const rows = db
-    .prepare(
-      `SELECT s.id, a.user_id, s.covered_by FROM shifts s LEFT JOIN assignments a ON a.shift_id = s.id WHERE s.period_id = ?`,
-    )
-    .all(periodId) as { id: string; user_id: string | null; covered_by: string | null }[];
+export function snapshotOnPublish(db: Db, periodId: string, byUserId: string, serviceIds?: string[]) {
+  // Just these services (publishing one service, or the rest of the schedule), or all of it.
+  const only = serviceIds && new Set(serviceIds);
+  const rows = (
+    db
+      .prepare(
+        `SELECT s.id, s.service_id, a.user_id, s.covered_by FROM shifts s LEFT JOIN assignments a ON a.shift_id = s.id WHERE s.period_id = ?`,
+      )
+      .all(periodId) as { id: string; service_id: string; user_id: string | null; covered_by: string | null }[]
+  ).filter((r) => !only || only.has(r.service_id));
+  const ids = new Set(rows.map((r) => r.id));
   const before = new Map(
     (
       db.prepare('SELECT shift_id, user_id, covered_by FROM publish_snapshot WHERE period_id = ?').all(periodId) as {
@@ -92,13 +94,12 @@ export function snapshotOnPublish(db: Db, periodId: string, byUserId: string) {
     ).map((r) => [r.shift_id, { userId: r.user_id, cover: r.covered_by }]),
   );
   transaction(db, () => {
-    if (before.size) {
-      for (const r of rows) {
-        const was = before.get(r.id);
-        if (was) logShiftChange(db, { shiftId: r.id, byUserId, via: 'republish', from: was, to: { userId: r.user_id, cover: r.covered_by } });
-      }
+    for (const r of rows) {
+      const was = before.get(r.id);
+      if (was) logShiftChange(db, { shiftId: r.id, byUserId, via: 'republish', from: was, to: { userId: r.user_id, cover: r.covered_by } });
     }
-    db.prepare('DELETE FROM publish_snapshot WHERE period_id = ?').run(periodId);
+    const del = db.prepare('DELETE FROM publish_snapshot WHERE period_id = ? AND shift_id = ?');
+    for (const [shiftId] of before) if (ids.has(shiftId) || !only) del.run(periodId, shiftId);
     const ins = db.prepare('INSERT INTO publish_snapshot (period_id, shift_id, user_id, covered_by) VALUES (?, ?, ?, ?)');
     for (const r of rows) ins.run(periodId, r.id, r.user_id, r.covered_by);
   });

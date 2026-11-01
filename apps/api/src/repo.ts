@@ -46,6 +46,8 @@ export interface Period {
   calendarHolidays: CalendarHoliday[];
   rules: Partial<Rules>;
   publishedAt: string | null;
+  /** Services published on their own before the whole schedule. */
+  publishedServiceIds: string[];
 }
 
 export interface RequestRow extends CallRequest {
@@ -164,16 +166,29 @@ function toPeriod(r: Row): Period {
     calendarHolidays: calendarHolidays(r.start_date, r.end_date, normalizeHolidays(JSON.parse(r.holidays_json))),
     rules: JSON.parse(r.rules_json),
     publishedAt: r.published_at ?? null,
+    publishedServiceIds: [],
   };
 }
 
+/** Services published on their own ahead of the whole schedule. */
+function withPublishedServices(db: Db, p: Period): Period {
+  const rows = db.prepare('SELECT service_id FROM published_services WHERE period_id = ?').all(p.id) as { service_id: string }[];
+  return { ...p, publishedServiceIds: rows.map((r) => r.service_id) };
+}
+
+/** Is this service's part of the schedule final (whole schedule published, or the service on its own)? */
+export const isLive = (p: Period, serviceId: string) => p.status === 'published' || p.publishedServiceIds.includes(serviceId);
+
+/** SQL: shift `s` (in period `p`) is published, wholly or by its service. */
+export const LIVE_SQL = `(p.status = 'published' OR EXISTS (SELECT 1 FROM published_services ps WHERE ps.period_id = s.period_id AND ps.service_id = s.service_id))`;
+
 export function getPeriod(db: Db, id: string): Period | undefined {
   const r = db.prepare('SELECT * FROM periods WHERE id = ?').get(id) as Row | undefined;
-  return r && toPeriod(r);
+  return r && withPublishedServices(db, toPeriod(r));
 }
 
 export function listPeriods(db: Db): Period[] {
-  return (db.prepare('SELECT * FROM periods ORDER BY year DESC, half DESC').all() as Row[]).map(toPeriod);
+  return (db.prepare('SELECT * FROM periods ORDER BY year DESC, half DESC').all() as Row[]).map((r) => withPublishedServices(db, toPeriod(r)));
 }
 
 /** A shift plus who covers it from outside the call pool, if anyone. */

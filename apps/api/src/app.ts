@@ -11,6 +11,7 @@ import { calendarRoutes } from './routes/calendar';
 import { peopleRoutes } from './routes/people';
 import { flagRoutes } from './routes/flags';
 import { periodRoutes } from './routes/periods';
+import { signoffRoutes } from './routes/signoff';
 import { requestRoutes } from './routes/requests';
 import { routineRoutes } from './routes/routine';
 import { tradeRoutes } from './routes/trades';
@@ -76,6 +77,7 @@ export async function buildApp(opts: AppOptions) {
   routineRoutes(app, db);
   tradeRoutes(app, db);
   flagRoutes(app, db);
+  signoffRoutes(app, db);
   calendarRoutes(app, db);
 
   const hasBuild = (dir?: string): dir is string => !!dir && existsSync(resolve(dir, 'index.html'));

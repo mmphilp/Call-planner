@@ -65,7 +65,8 @@ export function refreshCover(db: Db, periodId: string) {
  * Published schedules are left as they are (the admin console flags them).
  */
 export function syncUnpublished(db: Db) {
-  for (const p of listPeriods(db)) if (p.status !== 'published') regenerate(db, p);
+  // Leave schedules with published parts alone (the admin console flags them).
+  for (const p of listPeriods(db)) if (p.status !== 'published' && !p.publishedServiceIds.length) regenerate(db, p);
 }
 
 /** Rule check, fairness and request outcomes for a period (optionally with different assignments). */

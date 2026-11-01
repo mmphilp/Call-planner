@@ -34,6 +34,8 @@ import {
   listShifts,
   poolShifts,
   listUsers,
+  isLive,
+  LIVE_SQL,
   type Period,
   type User,
 } from '../repo';
@@ -216,6 +218,10 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     if (p.status === 'published' && (body.holidays || body.rules) && body.status !== 'closed') {
       throw httpError(409, 'Unpublish the schedule before changing it');
     }
+    // Changing holidays rebuilds shifts, which would change services already published.
+    if (body.holidays && p.publishedServiceIds.length) {
+      throw httpError(409, 'Some services are published; unpublish them before changing holidays');
+    }
     const statusChanged = !!body.status && body.status !== p.status;
     transaction(db, () => {
       if (body.status) {
@@ -237,10 +243,16 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     if (body.holidays) regenerate(updated);
     if (statusChanged) {
       logStatus(db, p.id, me(req).id, body.status!);
-      // Publishing logs anything changed while it was unpublished.
-      if (body.status === 'published') snapshotOnPublish(db, p.id, me(req).id);
+      // Publishing logs anything changed while it was unpublished. Services
+      // already published on their own were logged live, so skip those.
+      if (body.status === 'published') {
+        const rest = listServices(db).map((s) => s.id).filter((id) => !p.publishedServiceIds.includes(id));
+        snapshotOnPublish(db, p.id, me(req).id, p.publishedServiceIds.length ? rest : undefined);
+      }
+      // Unpublishing the whole schedule unpublishes every service too.
+      if (p.status === 'published') db.prepare('DELETE FROM published_services WHERE period_id = ?').run(p.id);
     }
-    return updated;
+    return getPeriod(db, p.id)!;
   });
 
   app.delete<{ Params: { id: string } }>('/api/periods/:id', async (req) => {
@@ -251,6 +263,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
 
   app.post<{ Params: { id: string } }>('/api/periods/:id/generate', async (req) => {
     const p = editablePeriod(req, req.params.id);
+    if (p.publishedServiceIds.length) throw httpError(409, 'Some services are published; unpublish them before rebuilding shifts');
     return { shiftCount: regenerate(p) };
   });
 
@@ -258,17 +271,21 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     const p = visiblePeriod(req, req.params.id);
     const isAdmin = canView(me(req));
     const people = listUsers(db).map((u) => ({ id: u.id, name: u.name, phone: u.phone }));
+    // Before review, surgeons see only the services already published on their own.
+    const whole = isAdmin || p.status === 'published' || p.status === 'review';
+    const shifts = listShifts(db, p.id).filter((s) => whole || isLive(p, s.serviceId));
+    const liveShift = new Set(shifts.map((s) => s.id));
     return {
       period: p,
       // Admins are warned when the shifts no longer match the services.
       shiftsOutOfDate: isAdmin ? shiftsOutOfDate(db, p) : undefined,
       services: listServices(db),
-      shifts: nameShifts(listShifts(db, p.id), p.holidays),
+      shifts: nameShifts(shifts, p.holidays),
       calendarHolidays: calendarHolidays(p.startDate, p.endDate, p.holidays),
       // Shifts changed after the schedule was first published.
       changedShiftIds: changedShiftIds(db, p.id),
       // Surgeons see assignments once the schedule is out for review (proposed) or published.
-      assignments: isAdmin || p.status === 'published' || p.status === 'review' ? listAssignments(db, p.id) : [],
+      assignments: whole ? listAssignments(db, p.id) : listAssignments(db, p.id).filter((a) => liveShift.has(a.shiftId)),
       people,
     };
   });
@@ -329,7 +346,9 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
   app.post<{ Params: { id: string } }>('/api/periods/:id/optimize', async (req) => {
     const p = editablePeriod(req, req.params.id, { teamAdmins: true });
     const body = parse(scopeBody.extend({ seed: z.number().int().optional() }), req.body);
-    const inScope = scopeFor(me(req), body);
+    // Services already published on their own are left as they are.
+    const scopeOf = scopeFor(me(req), body);
+    const inScope = (s: { serviceId: string; kind: ShiftKind }) => scopeOf(s) && !isLive(p, s.serviceId);
     const pool = callPool(db);
     const inPool = new Set(pool.map((u) => u.id));
 
@@ -400,13 +419,14 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     if (!canEditShift(me(req), { serviceId: shift.service_id, kind: shift.kind })) {
       throw httpError(403, 'Only the overall admin can change this shift');
     }
+    return shift;
   };
 
   app.put<{ Params: { id: string; shiftId: string } }>('/api/periods/:id/assignments/:shiftId', async (req) => {
     // One shift at a time works on a published schedule too; it goes live and is logged.
     const p = editablePeriod(req, req.params.id, { teamAdmins: true, published: true });
     const body = parse(z.object({ userId: z.string().nullable(), locked: z.boolean().optional() }), req.body);
-    editableShift(req, p.id, req.params.shiftId);
+    const shift = editableShift(req, p.id, req.params.shiftId);
     const before = holderOf(db, req.params.shiftId);
     if (body.userId === null) {
       db.prepare('DELETE FROM assignments WHERE shift_id = ?').run(req.params.shiftId);
@@ -418,7 +438,8 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
          ON CONFLICT (shift_id) DO UPDATE SET user_id = excluded.user_id, locked = excluded.locked, source = NULL`,
       ).run(req.params.shiftId, body.userId, body.locked === false ? 0 : 1);
     }
-    if (p.status === 'published') {
+    // Live (published) shifts: the change is logged.
+    if (isLive(p, shift.service_id)) {
       logShiftChange(db, { shiftId: req.params.shiftId, byUserId: me(req).id, via: 'edit', from: before, to: holderOf(db, req.params.shiftId) });
     }
     refreshCover(p.id);
@@ -429,13 +450,14 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
   app.put<{ Params: { id: string; shiftId: string } }>('/api/periods/:id/shifts/:shiftId/cover', async (req) => {
     const p = editablePeriod(req, req.params.id, { teamAdmins: true, published: true });
     const { coveredBy } = parse(z.object({ coveredBy: z.string().trim().min(1).max(100).nullable() }), req.body);
-    editableShift(req, p.id, req.params.shiftId);
+    const shift = editableShift(req, p.id, req.params.shiftId);
     const before = holderOf(db, req.params.shiftId);
     transaction(db, () => {
       db.prepare('UPDATE shifts SET covered_by = ? WHERE id = ?').run(coveredBy, req.params.shiftId);
       if (coveredBy) db.prepare('DELETE FROM assignments WHERE shift_id = ?').run(req.params.shiftId);
     });
-    if (p.status === 'published') {
+    // Live (published) shifts: the change is logged.
+    if (isLive(p, shift.service_id)) {
       logShiftChange(db, { shiftId: req.params.shiftId, byUserId: me(req).id, via: 'edit', from: before, to: holderOf(db, req.params.shiftId) });
     }
     refreshCover(p.id);
@@ -445,7 +467,8 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
   app.post<{ Params: { id: string } }>('/api/periods/:id/assignments/clear', async (req) => {
     const p = editablePeriod(req, req.params.id, { teamAdmins: true });
     const body = parse(scopeBody.extend({ includeLocked: z.boolean().default(false) }), req.body);
-    const inScope = scopeFor(me(req), body);
+    const scopeOf = scopeFor(me(req), body);
+    const inScope = (s: { serviceId: string; kind: ShiftKind }) => scopeOf(s) && !isLive(p, s.serviceId);
     const del = db.prepare(`DELETE FROM assignments WHERE shift_id = ? ${body.includeLocked ? '' : 'AND locked = 0'}`);
     transaction(db, () => {
       for (const s of listShifts(db, p.id)) if (inScope(s)) del.run(s.id);
@@ -489,6 +512,8 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
       action: r.action as 'shift' | 'status',
       via: r.via as 'edit' | 'swap' | 'republish' | null,
       status: r.status as Period['status'] | null,
+      // The service a status event applies to (a service published on its own).
+      service: r.action === 'status' && r.service_id ? { id: r.service_id, name: services.get(r.service_id) ?? r.service_id } : null,
       shift: r.shift_id
         ? { id: r.shift_id, serviceId: r.service_id, serviceName: services.get(r.service_id) ?? r.service_id, kind: r.kind, date: r.date, start: r.start, end: r.end }
         : null,
@@ -504,10 +529,10 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     const services = new Map(listServices(db).map((s) => [s.id, s]));
     const rows = db
       .prepare(
-        `SELECT s.*, p.status AS period_status FROM assignments a
+        `SELECT s.*, p.status AS period_status, ${LIVE_SQL} AS live FROM assignments a
          JOIN shifts s ON s.id = a.shift_id
          JOIN periods p ON p.id = s.period_id
-         WHERE a.user_id = ? AND p.status IN ('published', 'review') AND s.end >= ?
+         WHERE a.user_id = ? AND (p.status = 'review' OR ${LIVE_SQL}) AND s.end >= ?
          ORDER BY s.start`,
       )
       .all(me(req).id, q.from ?? '0000') as any[];
@@ -533,7 +558,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
       end: r.end,
       holiday: !!r.holiday,
       // Out for review: not final, and can be flagged rather than traded.
-      proposed: r.period_status === 'review',
+      proposed: !r.live,
       // Changed after the schedule was published (swap, or the scheduler moved it).
       changed: changed.has(r.id),
     }));
