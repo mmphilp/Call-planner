@@ -12,7 +12,7 @@ Call scheduling for a surgical group: surgeons send requests from an iPhone/Andr
 
 * Each **service** (e.g. General Surgery, Trauma) chooses which of these it needs covered, and each surgeon is set up for the services they can cover.
 * Schedules are built per **half-year**: January–June and July–December.
-* **Holidays** are covered like weekends and balanced separately. A holiday on a Friday or Monday stretches that weekend block (Thu 5pm start or Tue 7am end). Any other weekday holiday gets its own holiday block from 5pm the evening before to 7am the morning after (Thanksgiving: Wed 5pm – Fri 7am). With a shared weekend service, only that service covers holidays; the specialty teams have no call on them.
+* **Holidays** are covered like weekends and balanced separately. A holiday on a Friday stretches that weekend block to start at 7am Friday (Christmas Eve and Day: 7am Thursday); one on a Monday stretches it to 7am Tuesday. Thanksgiving always runs through the Friday after: Thursday 7am to Monday 7am. Any other weekday holiday gets its own holiday block, 7am to 7am the next day. The night before a holiday stays with the team. With a shared weekend service, only that service covers holidays; the specialty teams have no call on them.
 
 ## The workflow
 

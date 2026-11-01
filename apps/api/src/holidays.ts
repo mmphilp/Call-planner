@@ -1,4 +1,4 @@
-import { standardHolidays, type Shift } from '@call-planner/core';
+import { addDays, standardHolidays, type Shift } from '@call-planner/core';
 
 /** A holiday as a schedule observes it: `date` is the day the hospital observes. */
 export interface PeriodHoliday {
@@ -33,6 +33,10 @@ export function normalizeHolidays(raw: unknown): PeriodHoliday[] {
     })
     .sort((a, b) => a.date.localeCompare(b.date));
 }
+
+/** Days off that join a holiday to the weekend: the Friday after Thanksgiving. */
+export const bridgeDays = (holidays: PeriodHoliday[]) =>
+  holidays.filter((h) => /thanksgiving/i.test(h.name)).map((h) => addDays(h.date, 1));
 
 /** Default observed holidays for a new schedule: the usual rule (Saturday → Friday, Sunday → Monday). */
 export function defaultHolidays(start: string, end: string): PeriodHoliday[] {

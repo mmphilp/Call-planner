@@ -94,34 +94,39 @@ describe('generateShifts', () => {
   it('gives every weekday holiday to the weekend service only', () => {
     const colorectal: Service = { id: 'crs', name: 'Colorectal', coversWeekdayDay: true, coversWeekdayNight: true, coversWeekend: false };
     const shared: Service = { id: 'wk', name: 'Specialty Coverage', coversWeekdayDay: false, coversWeekdayNight: false, coversWeekend: true };
-    // Observed July 4th (Fri), Labor Day (Mon), Thanksgiving (Thu), Christmas Eve and Day (Thu–Fri).
+    // Observed July 4th (Fri), Labor Day (Mon), Thanksgiving (Thu, with the Friday
+    // after as a bridge day), Christmas Eve and Day (Thu–Fri), and a mid-week holiday.
     const shifts = generateShifts({
       start: '2026-07-01',
       end: '2026-12-31',
       services: [colorectal, shared],
-      holidays: ['2026-07-03', '2026-09-07', '2026-11-26', '2026-12-24', '2026-12-25'],
+      holidays: ['2026-07-03', '2026-09-07', '2026-11-26', '2026-12-24', '2026-12-25', '2026-10-14'],
+      bridgeDays: ['2026-11-27'],
     });
     const ids = new Set(shifts.map((s) => s.id));
     const span = (id: string) => {
       const s = shifts.find((x) => x.id === id)!;
       return `${s.start} → ${s.end}${s.holiday ? ' (holiday)' : ''}`;
     };
-    for (const d of ['2026-07-03', '2026-09-07', '2026-11-26', '2026-12-24', '2026-12-25']) {
+    for (const d of ['2026-07-03', '2026-09-07', '2026-11-26', '2026-11-27', '2026-12-24', '2026-12-25', '2026-10-14']) {
       expect(ids.has(`crs:day:${d}`)).toBe(false);
       expect(ids.has(`crs:night:${d}`)).toBe(false);
     }
-    expect(span('wk:weekend:2026-07-03')).toBe('2026-07-02T17:00 → 2026-07-06T07:00 (holiday)');
+    // The night before a holiday stays with the team; the block starts at 7am on the holiday.
+    expect(span('wk:weekend:2026-07-03')).toBe('2026-07-03T07:00 → 2026-07-06T07:00 (holiday)');
+    expect(ids.has('crs:night:2026-07-02')).toBe(true);
     expect(span('wk:weekend:2026-09-04')).toBe('2026-09-04T17:00 → 2026-09-08T07:00 (holiday)');
-    // Thanksgiving gets its own block, Wednesday 5pm to Friday 7am.
-    expect(span('wk:weekend:2026-11-26')).toBe('2026-11-25T17:00 → 2026-11-27T07:00 (holiday)');
-    expect(ids.has('crs:night:2026-11-25')).toBe(false);
-    expect(ids.has('crs:day:2026-11-25')).toBe(true);
-    expect(ids.has('crs:day:2026-11-27')).toBe(true);
-    // Christmas Eve and Day fold into one long weekend from Wednesday evening.
-    expect(span('wk:weekend:2026-12-25')).toBe('2026-12-23T17:00 → 2026-12-28T07:00 (holiday)');
-    expect(ids.has('wk:weekend:2026-12-24')).toBe(false);
-    expect(ids.has('crs:day:2026-12-23')).toBe(true);
-    expect(ids.has('crs:night:2026-12-23')).toBe(false);
+    // Thanksgiving runs through the Friday after into the weekend.
+    expect(span('wk:weekend:2026-11-27')).toBe('2026-11-26T07:00 → 2026-11-30T07:00 (holiday)');
+    expect(ids.has('wk:weekend:2026-11-26')).toBe(false);
+    expect(ids.has('crs:night:2026-11-25')).toBe(true);
+    // Christmas Eve and Day: one block from 7am Christmas Eve.
+    expect(span('wk:weekend:2026-12-25')).toBe('2026-12-24T07:00 → 2026-12-28T07:00 (holiday)');
+    expect(ids.has('crs:night:2026-12-23')).toBe(true);
+    // A mid-week holiday on its own: 7am to 7am.
+    expect(span('wk:weekend:2026-10-14')).toBe('2026-10-14T07:00 → 2026-10-15T07:00 (holiday)');
+    expect(ids.has('crs:night:2026-10-13')).toBe(true);
+    expect(ids.has('crs:day:2026-10-15')).toBe(true);
   });
 
   it('keeps weekday holiday shifts for a group with no weekend service', () => {

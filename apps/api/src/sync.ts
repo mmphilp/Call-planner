@@ -1,9 +1,16 @@
 import { applyTeamRules, backupMap, coverFromBackup, evaluateSchedule, generateShifts, type Assignment } from '@call-planner/core';
 import { transaction, type Db } from './db';
+import { bridgeDays } from './holidays';
 import { callPool, listAssignments, listPeriods, listRequests, listServices, listShifts, poolShifts, type Period } from './repo';
 
 function expectedShifts(db: Db, p: Period) {
-  return generateShifts({ start: p.startDate, end: p.endDate, services: listServices(db), holidays: p.holidays.map((h) => h.date) });
+  return generateShifts({
+    start: p.startDate,
+    end: p.endDate,
+    services: listServices(db),
+    holidays: p.holidays.map((h) => h.date),
+    bridgeDays: bridgeDays(p.holidays),
+  });
 }
 
 /**
@@ -27,11 +34,11 @@ export function regenerate(db: Db, p: Period): number {
   return shifts.length;
 }
 
-/** True when the period's shifts no longer match the services' coverage. */
+/** True when the period's shifts no longer match the services' coverage, holidays or hours. */
 export function shiftsOutOfDate(db: Db, p: Period): boolean {
-  const expected = new Set(expectedShifts(db, p).map((s) => s.id));
+  const expected = new Map(expectedShifts(db, p).map((s) => [s.id, `${s.start}|${s.end}`]));
   const current = listShifts(db, p.id);
-  return current.length !== expected.size || current.some((s) => !expected.has(s.id));
+  return current.length !== expected.size || current.some((s) => expected.get(s.id) !== `${s.start}|${s.end}`);
 }
 
 /**

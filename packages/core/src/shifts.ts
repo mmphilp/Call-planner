@@ -9,11 +9,16 @@ export interface GenerateOptions {
   /**
    * Give weekday holidays to the weekend services instead of the weekday
    * teams (default true). A holiday next to a weekend stretches that block
-   * (Friday holiday: Thu 17:00 start; Monday: Tue 07:00 end); any other gets a
-   * holiday block of its own from 17:00 the evening before to 07:00 the
-   * morning after. Holiday blocks are weekend shifts dated on the holiday.
+   * (Friday holiday: starts 7am Friday; Monday: ends 7am Tuesday); any other
+   * gets a holiday block of its own, 7am to 7am. Holiday blocks are weekend
+   * shifts dated on the holiday.
    */
   extendWeekendsForHolidays?: boolean;
+  /**
+   * Extra days off that join a holiday to the weekend without being holidays
+   * themselves, e.g. the Friday after Thanksgiving.
+   */
+  bridgeDays?: DateStr[];
 }
 
 export const DAY_START = '07:00';
@@ -44,60 +49,60 @@ export function generateShifts(opts: GenerateOptions): Shift[] {
   const hasWeekendBlocks = opts.services.some((s) => s.coversWeekend);
   const isWeekday = (d: DateStr) => dayOfWeek(d) !== 0 && dayOfWeek(d) !== 6;
 
-  /** Mark the weekday call a block from `from` 17:00 to `to` 07:00 replaces. */
-  const absorb = (from: DateStr, to: DateStr) => {
-    for (let d = from; d < to; d = addDays(d, 1)) {
-      absorbed.add(`${d}|night`);
-      if (d > from) absorbed.add(`${d}|day`);
-    }
-  };
+  // Days off for the teams: holidays, plus bridge days (e.g. the Friday
+  // after Thanksgiving) that join a holiday to the weekend.
+  const off = new Set([...holidays, ...(opts.bridgeDays ?? [])]);
+  const isOff = (d: DateStr) => extend && off.has(d) && isWeekday(d);
 
-  /**
-   * Blocks every weekend service covers, as [id date, from, to]: the block
-   * runs from `from` at 17:00 to `to` at 07:00.
-   */
-  const blocks: [DateStr, DateStr, DateStr][] = [];
+  /** Blocks every weekend service covers, as [id date, start, end] times. */
+  const blocks: [DateStr, string, string][] = [];
   const inBlock = new Set<DateStr>();
+  const addBlock = (date: DateStr, start: string, end: string) => {
+    blocks.push([date, start, end]);
+    for (let d = start.slice(0, 10); at(d, '12:00') < end; d = addDays(d, 1)) if (at(d, '12:00') > start) inBlock.add(d);
+  };
   for (const date of eachDay(opts.start, opts.end)) {
     if (dayOfWeek(date) !== 5) continue;
-    // Holidays next to the weekend fold into it: the block starts the evening
-    // before the first one and ends the morning after the last
-    // (Friday holiday → Thu 5pm; Thursday and Friday → Wed 5pm; Monday → Tue 7am).
-    let from = date;
+    // Days off next to the weekend fold into it. A Friday holiday starts the
+    // block at 7am that Friday (Christmas Eve and Day: 7am Thursday); a
+    // Monday holiday ends it at 7am Tuesday.
+    let first = date;
+    while (isOff(first) && isOff(addDays(first, -1))) first = addDays(first, -1);
     let to = addDays(date, 3);
-    if (extend) {
-      while (holidays.has(from) && isWeekday(from)) from = addDays(from, -1);
-      while (holidays.has(to) && isWeekday(to)) to = addDays(to, 1);
-    }
-    blocks.push([date, from, to]);
-    inBlock.add(date);
-    for (let d = addDays(from, 1); d < to; d = addDays(d, 1)) inBlock.add(d);
+    while (isOff(to)) to = addDays(to, 1);
+    addBlock(date, isOff(date) ? at(first, DAY_START) : at(date, DAY_END), at(to, DAY_START));
   }
   if (extend) {
-    // Other weekday holidays get a holiday block of their own, e.g.
-    // Thanksgiving: Wednesday 5pm to Friday 7am.
+    // Other weekday holidays get a block of their own, 7am to 7am the next day.
     for (const date of eachDay(opts.start, opts.end)) {
-      if (!holidays.has(date) || !isWeekday(date) || inBlock.has(date)) continue;
+      if (!isOff(date) || inBlock.has(date)) continue;
       let last = date;
-      while (holidays.has(addDays(last, 1)) && isWeekday(addDays(last, 1)) && !inBlock.has(addDays(last, 1))) last = addDays(last, 1);
-      blocks.push([date, addDays(date, -1), addDays(last, 1)]);
-      for (let d = date; d <= last; d = addDays(d, 1)) inBlock.add(d);
+      while (isOff(addDays(last, 1)) && !inBlock.has(addDays(last, 1))) last = addDays(last, 1);
+      addBlock(date, at(date, DAY_START), at(addDays(last, 1), DAY_START));
     }
   }
 
-  if (hasWeekendBlocks) for (const [, from, to] of blocks) absorb(from, to);
+  // The weekday call these blocks replace, for every service.
+  if (hasWeekendBlocks) {
+    for (const [, start, end] of blocks) {
+      for (let d = start.slice(0, 10); at(d, DAY_START) < end; d = addDays(d, 1)) {
+        if (start <= at(d, DAY_START) && at(d, DAY_END) <= end) absorbed.add(`${d}|day`);
+        if (start <= at(d, DAY_END) && at(addDays(d, 1), DAY_START) <= end) absorbed.add(`${d}|night`);
+      }
+    }
+  }
 
   for (const service of opts.services) {
     if (!service.coversWeekend) continue;
-    for (const [date, from, to] of blocks) {
-      const touchesHoliday = eachDay(from, to).some((d) => holidays.has(d) && d > from && d < to);
+    for (const [date, start, end] of blocks) {
+      const touchesHoliday = [...holidays].some((d) => at(d, '12:00') > start && at(d, '12:00') < end);
       shifts.push({
         id: shiftId(service.id, 'weekend', date),
         serviceId: service.id,
         kind: 'weekend',
         date,
-        start: at(from, DAY_END),
-        end: at(to, DAY_START),
+        start,
+        end,
         holiday: touchesHoliday || undefined,
       });
     }

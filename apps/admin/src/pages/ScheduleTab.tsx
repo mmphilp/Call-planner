@@ -293,11 +293,10 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
               const blockAt = (time: string) =>
                 schedule.shifts.find((x) => x.kind === 'weekend' && x.start <= `${d}T${time}` && x.end > `${d}T${time}`);
               const taken = (time: string) => (blockAt(time)?.holiday ? 'holiday' : 'weekend');
-              // A mid-week holiday block (e.g. Thanksgiving) shows in the night
-              // column of the evening it starts. Weekend blocks show on Friday.
+              // A mid-week holiday block shows on the day it starts. Weekend blocks show on Friday.
               const holidayBlock = (sid: string) =>
                 schedule.shifts.find(
-                  (x) => x.serviceId === sid && x.kind === 'weekend' && x.start === `${d}T17:00` && dayOfWeek(x.date) !== 5,
+                  (x) => x.serviceId === sid && x.kind === 'weekend' && x.start.slice(0, 10) === d && dayOfWeek(x.date) !== 5,
                 );
               const marks = schedule.calendarHolidays.filter((h) => h.date === d);
               return (

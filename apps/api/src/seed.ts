@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, rmSync } from 'node:fs';
 import { generateShifts, halfYearRange } from '@call-planner/core';
 import { openDb } from './db';
-import { defaultHolidays } from './holidays';
+import { bridgeDays, defaultHolidays } from './holidays';
 import { listServices } from './repo';
 import { createUser } from './routes/people';
 
@@ -62,7 +62,7 @@ db.prepare(
 const insShift = db.prepare(
   'INSERT INTO shifts (id, period_id, service_id, kind, date, start, end, holiday) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
 );
-for (const s of generateShifts({ start, end, services: listServices(db), holidays: holidays.map((h) => h.date) })) {
+for (const s of generateShifts({ start, end, services: listServices(db), holidays: holidays.map((h) => h.date), bridgeDays: bridgeDays(holidays) })) {
   insShift.run(s.id, periodId, s.serviceId, s.kind, s.date, s.start, s.end, s.holiday ? 1 : 0);
 }
 
