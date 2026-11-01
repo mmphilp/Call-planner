@@ -106,7 +106,7 @@ cd apps/mobile && npx tsc --noEmit
 One container runs everything on one port, with **one address for everyone**: `http://<server>:4000/`.
 
 * Everyone signs in there and gets the app (on a phone or iPad, use **Share → Add to Home Screen**).
-* The overall admin, team admins and view-only accounts also see an **Admin console** card on *My Call* and *Profile*. It opens the console already signed in, and the console's *My schedule* link goes back.
+* The overall admin, team admins and view-only accounts also see an **Admin console** card on *Profile*. It opens the console already signed in, and the console's *My schedule* link goes back.
 * On a computer you can bookmark `http://<server>:4000/admin` to go straight to the console.
 * Old `/app` links and home-screen icons redirect to the new address.
 * `http://<server>:4000/cal/…` is each surgeon's calendar feed.
