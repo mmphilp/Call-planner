@@ -147,10 +147,10 @@ class Model {
         if (c) m.set(r.userId, (m.get(r.userId) ?? 0) + c);
       }
       // Rotate holidays: whoever had this one last time is a later choice.
-      if (shift.holidayName) {
-        for (const [userId, names] of Object.entries(input.holidayHistory ?? {})) {
-          if (names.includes(shift.holidayName)) m.set(userId, (m.get(userId) ?? 0) + w.holidayRepeat);
-        }
+      const covers = shift.holidayNames ?? (shift.holidayName ? [shift.holidayName] : []);
+      for (const [userId, names] of Object.entries(input.holidayHistory ?? {})) {
+        const repeats = covers.filter((n) => names.includes(n)).length;
+        if (repeats) m.set(userId, (m.get(userId) ?? 0) + repeats * w.holidayRepeat);
       }
       return m;
     });

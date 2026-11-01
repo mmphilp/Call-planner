@@ -45,6 +45,7 @@ export function planWeeks(input: OptimizeInput & { services: Service[] }): Assig
       holiday: sorted.some((s) => s.holiday) || undefined,
       // A holiday in the week travels with the week, so rotate it at this level.
       holidayName: sorted.find((s) => s.holidayName)?.holidayName,
+      holidayNames: [...new Set(sorted.flatMap((s) => s.holidayNames ?? []))],
     };
   });
 

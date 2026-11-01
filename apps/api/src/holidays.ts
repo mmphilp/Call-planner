@@ -64,10 +64,13 @@ export function calendarHolidays(start: string, end: string, holidays: PeriodHol
  */
 export function nameShifts<T extends Shift>(shifts: T[], holidays: PeriodHoliday[]): T[] {
   return shifts.map((s) => {
-    const h =
+    // A block can take in more than one, e.g. Christmas Eve and Christmas.
+    const hs =
       s.kind === 'weekend'
-        ? holidays.find((x) => x.date >= s.start.slice(0, 10) && x.date < s.end.slice(0, 10))
-        : holidays.find((x) => x.date === s.date);
-    return h ? { ...s, holidayName: h.name } : s;
+        ? holidays.filter((x) => x.date >= s.start.slice(0, 10) && x.date < s.end.slice(0, 10))
+        : holidays.filter((x) => x.date === s.date);
+    if (!hs.length) return s;
+    const names = [...new Set(hs.map((h) => h.name))];
+    return { ...s, holidayName: names.join(' & '), holidayNames: names };
   });
 }

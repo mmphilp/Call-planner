@@ -114,13 +114,13 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
       const owner = new Map(listAssignments(db, period.id).map((a) => [a.shiftId, a]));
       const byHoliday = new Map<string, HolidayOccurrence>();
       for (const s of nameShifts(listShifts(db, period.id), period.holidays)) {
-        if (!s.holidayName) continue;
-        const h = period.holidays.find((x) => x.name === s.holidayName)!;
+        const a = owner.get(s.id);
+        for (const name of s.holidayNames ?? []) {
+        const h = period.holidays.find((x) => x.name === name)!;
         const key = `${h.name}|${h.date}`;
         if (!byHoliday.has(key)) {
           byHoliday.set(key, { name: h.name, date: h.date, periodId: period.id, periodLabel: period.label, status: period.status, covers: [] });
         }
-        const a = owner.get(s.id);
         byHoliday.get(key)!.covers.push({
           shiftId: s.id,
           serviceId: s.serviceId,
@@ -129,6 +129,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
           coveredBy: s.coveredBy ?? null,
           crossCover: a?.source === 'backup',
         });
+        }
       }
       return [...byHoliday.values()];
     });

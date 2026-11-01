@@ -228,8 +228,10 @@ function Overview({ data, reload, goTo }: { data: PeriodData; reload: () => void
       <div className="card">
         <h2>Holidays</h2>
         <p className="muted small">
-          Set the day the hospital observes each holiday. Observed days are balanced as holiday call, and one on a Friday or Monday
-          stretches that weekend block (Thursday 5pm start or Tuesday 7am end). The actual dates show on every calendar either way.
+          Set the day the hospital observes each holiday. On an observed day only the weekend service is on call; the teams have
+          none. A Friday holiday starts that weekend at 7am Friday, a Monday one ends it at 7am Tuesday, Thanksgiving runs through
+          the Friday after, and any other weekday holiday is covered 7am to 7am. A holiday marked <b>Not observed</b> is a normal
+          working day. The actual dates show on every calendar either way.
         </p>
         <HolidayEditor period={p} onSave={setHolidays} />
         <div className="row" style={{ marginTop: 12 }}>
@@ -280,12 +282,13 @@ function HolidayEditor({ period: p, onSave }: { period: Period; onSave: (h: Peri
               (x) => x.name === h.name && Math.abs(Date.parse(x.date) - Date.parse(h.date)) < 7 * 86_400_000,
             );
             return (
-              <tr key={`${h.name}${h.date}`} style={entry ? undefined : { opacity: 0.6 }}>
+              <tr key={`${h.name}${h.date}`}>
                 <td>{h.name}</td>
                 <td>{longDate(h.date, { year: true })}</td>
                 <td>
                   {entry ? (
                     <div className="row">
+                      <span className="badge approved">Observed</span>
                       <input
                         type="date"
                         value={entry.date}
@@ -296,17 +299,19 @@ function HolidayEditor({ period: p, onSave }: { period: Period; onSave: (h: Peri
                       />
                       <span className="small muted">{longDate(entry.date)}</span>
                       <button className="link" disabled={locked} onClick={() => setObserved(h.name, h.date, null)}>
-                        Not observed
+                        Don’t observe
                       </button>
                     </div>
                   ) : (
-                    <button
-                      className="link"
-                      disabled={locked}
-                      onClick={() => setObserved(h.name, h.date, h.observed >= p.startDate && h.observed <= p.endDate ? h.observed : h.date)}
-                    >
-                      Observe ({longDate(h.observed)})
-                    </button>
+                    <div className="row">
+                      <span className="badge denied">Not observed</span>
+                      <button
+                        disabled={locked}
+                        onClick={() => setObserved(h.name, h.date, h.observed >= p.startDate && h.observed <= p.endDate ? h.observed : h.date)}
+                      >
+                        Observe on {longDate(h.observed)}
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>
@@ -329,7 +334,7 @@ function HolidayEditor({ period: p, onSave }: { period: Period; onSave: (h: Peri
         </tbody>
       </table>
       <div className="row" style={{ marginTop: 10 }}>
-        <input placeholder="Another holiday, e.g. Christmas Eve" value={extra.name} onChange={(e) => setExtra({ ...extra, name: e.target.value })} />
+        <input placeholder="Another day off, e.g. New Year’s Eve" value={extra.name} onChange={(e) => setExtra({ ...extra, name: e.target.value })} />
         <input type="date" min={p.startDate} max={p.endDate} value={extra.date} onChange={(e) => setExtra({ ...extra, date: e.target.value })} />
         <button
           disabled={!extra.name.trim() || !extra.date || locked}

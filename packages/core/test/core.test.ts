@@ -379,9 +379,12 @@ describe('holidays', () => {
       'Fourth of July: 2026-07-04 (2026-07-03)',
       'Labor Day: 2026-09-07 (2026-09-07)',
       'Thanksgiving: 2026-11-26 (2026-11-26)',
+      'Christmas Eve: 2026-12-24 (2026-12-24)',
       'Christmas: 2026-12-25 (2026-12-25)',
     ]);
     expect(standardHolidays(2027).find((h) => h.name === 'Christmas')!.observed).toBe('2027-12-24');
+    // Christmas Eve on a Sunday is observed the Friday before; Christmas takes the Monday.
+    expect(standardHolidays(2028).filter((h) => h.name.startsWith('Christmas')).map((h) => h.observed)).toEqual(['2028-12-22', '2028-12-25']);
   });
 
   it('rotates a holiday away from whoever had it last time', () => {

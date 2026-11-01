@@ -73,7 +73,7 @@ export interface Holiday {
   observed: DateStr;
 }
 
-export const HOLIDAY_NAMES = ['New Year’s Day', 'Memorial Day', 'Juneteenth', 'Fourth of July', 'Labor Day', 'Thanksgiving', 'Christmas'];
+export const HOLIDAY_NAMES = ['New Year’s Day', 'Memorial Day', 'Juneteenth', 'Fourth of July', 'Labor Day', 'Thanksgiving', 'Christmas Eve', 'Christmas'];
 
 /** The n-th given weekday of a month (n = -1 for the last). */
 function nthWeekday(year: number, month: number, weekday: number, n: number): DateStr {
@@ -99,8 +99,14 @@ export function standardHolidays(year: number): Holiday[] {
     ['Fourth of July', fixed(7, 4)],
     ['Labor Day', nthWeekday(year, 9, 1, 1)],
     ['Thanksgiving', nthWeekday(year, 11, 4, 4)],
+    ['Christmas Eve', fixed(12, 24)],
     ['Christmas', fixed(12, 25)],
-  ].map(([name, date]) => ({ name, date, observed: observed(date) }));
+  ].map(([name, date]) => ({
+    name,
+    date,
+    // Christmas Eve on a weekend is observed the Friday before (Christmas takes the Monday).
+    observed: name === 'Christmas Eve' && dayOfWeek(date) % 6 === 0 ? addDays(date, dayOfWeek(date) === 6 ? -1 : -2) : observed(date),
+  }));
 }
 
 export const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];

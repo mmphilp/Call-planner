@@ -42,8 +42,10 @@ export interface Shift {
   holiday?: boolean;
   /** Exempt from rest and nights-per-week rules (small teams, week-long call). */
   relaxed?: boolean;
-  /** Name of the holiday this shift covers, e.g. "Christmas". */
+  /** Holiday this shift covers, for display, e.g. "Christmas Eve & Christmas". */
   holidayName?: string;
+  /** Each holiday this shift covers, for rotation, e.g. ["Christmas Eve", "Christmas"]. */
+  holidayNames?: string[];
 }
 
 export interface Surgeon {
