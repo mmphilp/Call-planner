@@ -151,6 +151,43 @@ CREATE TABLE IF NOT EXISTS flags (
   resolved_at TEXT
 );
 CREATE INDEX IF NOT EXISTS flags_period ON flags(period_id, status);
+
+-- Who changed what after a schedule was published (and publish/unpublish
+-- events). Shift details are copied so entries stay readable if the shift is
+-- later rebuilt away. Only the overall admin sees this.
+CREATE TABLE IF NOT EXISTS change_log (
+  id TEXT PRIMARY KEY,
+  period_id TEXT NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+  at TEXT NOT NULL,
+  by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  -- 'shift': an assignment or locum changed; 'status': published, unpublished, sent for review…
+  action TEXT NOT NULL CHECK (action IN ('shift', 'status')),
+  -- How a shift change happened: 'edit' (by hand), 'swap' (approved trade), 'republish' (changed while unpublished).
+  via TEXT,
+  shift_id TEXT,
+  service_id TEXT,
+  kind TEXT,
+  date TEXT,
+  start TEXT,
+  end TEXT,
+  from_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  to_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  from_cover TEXT,
+  to_cover TEXT,
+  status TEXT,
+  note TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS change_log_period ON change_log(period_id, at);
+
+-- Each schedule's assignments as last published, to log what changed while
+-- it was unpublished when it's published again.
+CREATE TABLE IF NOT EXISTS publish_snapshot (
+  period_id TEXT NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+  shift_id TEXT NOT NULL,
+  user_id TEXT,
+  covered_by TEXT,
+  PRIMARY KEY (period_id, shift_id)
+);
 `;
 
 export function openDb(path: string): Db {
@@ -204,6 +241,12 @@ function migrate(db: Db) {
   if (!serviceCols.includes('short_name')) db.exec(`ALTER TABLE services ADD COLUMN short_name TEXT NOT NULL DEFAULT ''`);
   const assignmentCols = (db.prepare('PRAGMA table_info(assignments)').all() as { name: string }[]).map((c) => c.name);
   if (!assignmentCols.includes('source')) db.exec('ALTER TABLE assignments ADD COLUMN source TEXT');
+  // Schedules published before the change log existed: remember them as published now.
+  db.exec(`
+    INSERT OR IGNORE INTO publish_snapshot (period_id, shift_id, user_id, covered_by)
+    SELECT s.period_id, s.id, a.user_id, s.covered_by
+    FROM shifts s JOIN periods p ON p.id = s.period_id LEFT JOIN assignments a ON a.shift_id = s.id
+    WHERE p.status = 'published' AND NOT EXISTS (SELECT 1 FROM publish_snapshot x WHERE x.period_id = p.id)`);
 }
 
 export function transaction<T>(db: Db, fn: () => T): T {

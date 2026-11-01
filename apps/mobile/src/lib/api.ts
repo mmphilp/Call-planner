@@ -48,6 +48,8 @@ export interface MyShift {
   holidayName?: string;
   /** In a proposed schedule out for review: not final yet. */
   proposed?: boolean;
+  /** Changed after the schedule was published (swap, or the scheduler moved it). */
+  changed?: boolean;
 }
 
 export interface Shift {
@@ -68,6 +70,8 @@ export interface Schedule {
   shifts: Shift[];
   assignments: { shiftId: string; userId: string }[];
   people: { id: string; name: string; phone: string | null }[];
+  /** Shifts changed after the schedule was published. */
+  changedShiftIds?: string[];
 }
 
 export interface TradeShift {

@@ -55,11 +55,14 @@ export function CalendarView({
   const services = inSchedule.filter((s) => !filter.hidden.has(s.id));
   const svc = new Map(services.map((s) => [s.id, s]));
 
+  // Shifts changed after publishing get a ✎.
+  const changed = new Set(schedule.changedShiftIds ?? []);
   const who = (s: Shift) => {
-    if (s.coveredBy) return { text: s.coveredBy, ids: [], cover: false, open: false };
+    const mark = changed.has(s.id) ? ' ✎' : '';
+    if (s.coveredBy) return { text: s.coveredBy + mark, ids: [], cover: false, open: false };
     const a = owner.get(s.id);
-    if (!a) return { text: 'Open', ids: [], cover: false, open: true };
-    return { text: shortName(name.get(a.userId) ?? '?'), ids: [a.userId], cover: a.source === 'backup', open: false };
+    if (!a) return { text: 'Open' + mark, ids: [], cover: false, open: true };
+    return { text: shortName(name.get(a.userId) ?? '?') + mark, ids: [a.userId], cover: a.source === 'backup', open: false };
   };
 
   const entriesFor = (d: string): Entry[] => {
@@ -121,6 +124,7 @@ export function CalendarView({
       <ServiceFilter services={inSchedule} filter={filter}>
         <span className="muted">
           <i>Italic</i> = cross-cover
+          {(schedule.changedShiftIds?.length ?? 0) > 0 && <> · ✎ = changed since publishing</>}
         </span>
       </ServiceFilter>
       <div className="cal-grid">

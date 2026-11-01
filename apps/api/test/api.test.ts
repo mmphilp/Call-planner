@@ -355,6 +355,70 @@ describe('review before publishing', () => {
   }, 60_000);
 });
 
+describe('changes after publishing', () => {
+  it('allows one-shift edits on a published schedule, marks them and logs them for the admin', async () => {
+    const { body: p } = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2 });
+    await call(adminToken, 'PATCH', `/api/periods/${p.id}`, { status: 'closed' });
+    await call(adminToken, 'POST', `/api/periods/${p.id}/optimize`, { seed: 1 });
+    await call(adminToken, 'PATCH', `/api/periods/${p.id}`, { status: 'published' });
+    const sched = (await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`)).body;
+    expect(sched.changedShiftIds).toEqual([]);
+    const users = (await call(adminToken, 'GET', '/api/users')).body;
+    const id = (email: string) => users.find((u: any) => u.email === email).id;
+
+    // Bulk changes still need unpublishing.
+    expect((await call(adminToken, 'POST', `/api/periods/${p.id}/optimize`, { seed: 2 })).status).toBe(409);
+    expect((await call(adminToken, 'POST', `/api/periods/${p.id}/assignments/clear`, {})).status).toBe(409);
+
+    // A single weekend shift: moved to someone else, live right away.
+    const wk = sched.assignments.find((a: any) => a.shiftId.includes(':weekend:'));
+    const other = users.find((u: any) => u.role === 'surgeon' && u.id !== wk.userId).id;
+    const url = `/api/periods/${p.id}/assignments/${encodeURIComponent(wk.shiftId)}`;
+    expect((await call(surgeonTokens[0], 'PUT', url, { userId: other })).status).toBe(403);
+    expect((await call(adminToken, 'PUT', url, { userId: other })).status).toBe(200);
+    const after = (await call(surgeonTokens[0], 'GET', `/api/periods/${p.id}/schedule`)).body;
+    expect(after.assignments.find((a: any) => a.shiftId === wk.shiftId).userId).toBe(other);
+    expect(after.changedShiftIds).toEqual([wk.shiftId]);
+    // Setting the same person again isn't a change.
+    await call(adminToken, 'PUT', url, { userId: other });
+
+    // A team admin can fix their team's weekday shift on a published schedule too.
+    await call(adminToken, 'PATCH', `/api/users/${id('s2@x.org')}`, { adminServiceIds: ['hand'] });
+    const hand = sched.assignments.find((a: any) => a.shiftId.startsWith('hand:day:'));
+    const handUrl = `/api/periods/${p.id}/shifts/${encodeURIComponent(hand.shiftId)}/cover`;
+    expect((await call(surgeonTokens[1], 'PUT', handUrl, { coveredBy: 'Locum' })).status).toBe(200);
+
+    // The log: overall admin only, newest first.
+    expect((await call(surgeonTokens[1], 'GET', `/api/periods/${p.id}/changes`)).status).toBe(403);
+    let log = (await call(adminToken, 'GET', `/api/periods/${p.id}/changes`)).body;
+    expect(log.map((e: any) => (e.action === 'status' ? `status ${e.status}` : `${e.via} ${e.shift.id}`))).toEqual([
+      `edit ${hand.shiftId}`,
+      `edit ${wk.shiftId}`,
+      'status published',
+      'status closed',
+    ]);
+    expect(log[0]).toMatchObject({ by: { name: 'Surgeon 2' }, from: { user: { id: hand.userId }, cover: null }, to: { user: null, cover: 'Locum' } });
+    expect(log[1]).toMatchObject({ by: { name: 'Admin' }, from: { user: { id: wk.userId } }, to: { user: { id: other } } });
+
+    // Changed while unpublished: logged when it's published again.
+    await call(adminToken, 'PATCH', `/api/periods/${p.id}`, { status: 'closed' });
+    const day = sched.assignments.find((a: any) => a.shiftId.startsWith('general:day:'));
+    await call(adminToken, 'PUT', `/api/periods/${p.id}/assignments/${encodeURIComponent(day.shiftId)}`, { userId: null });
+    expect((await call(adminToken, 'GET', `/api/periods/${p.id}/changes`)).body).toHaveLength(5);
+    await call(adminToken, 'PATCH', `/api/periods/${p.id}`, { status: 'published' });
+    log = (await call(adminToken, 'GET', `/api/periods/${p.id}/changes`)).body;
+    const republished = log.filter((e: any) => e.via === 'republish');
+    expect(republished.map((e: any) => e.shift.id)).toContain(day.shiftId);
+    expect(republished.find((e: any) => e.shift.id === day.shiftId).to.user).toBeNull();
+
+    // Surgeons see their changed shifts marked.
+    const mine = (await call(adminToken, 'POST', '/api/auth/login', { email: users.find((u: any) => u.id === other).email, password: 'password123' })).body.token;
+    const shifts = (await call(mine, 'GET', '/api/me/shifts?from=2027-07-01')).body;
+    expect(shifts.find((s: any) => s.id === wk.shiftId).changed).toBe(true);
+    expect(shifts.filter((s: any) => s.id !== wk.shiftId).every((s: any) => !s.changed)).toBe(true);
+  }, 60_000);
+});
+
 describe('viewer role and shift trades', () => {
   it('lets a viewer see everything but change nothing', async () => {
     await call(adminToken, 'POST', '/api/users', { email: 'assistant@x.org', name: 'Assistant', role: 'viewer', takesCall: false, password: 'password123' });
@@ -422,6 +486,16 @@ describe('viewer role and shift trades', () => {
     expect((await call(adminToken, 'POST', `/api/trades/${swap2.id}/approve`, {})).body.status).toBe('approved');
     who = await owner();
     expect([who.get(w1), who.get(w2)]).toEqual([b, c]);
+
+    // Approved trades are in the admin's change log and mark the shifts as changed.
+    const log = (await call(adminToken, 'GET', `/api/periods/${p.id}/changes`)).body.filter((e: any) => e.via === 'swap');
+    expect(log.map((e: any) => [e.shift.id, e.from.user.id, e.to.user.id])).toEqual([
+      [w2, b, c],
+      [w1, c, b],
+      [w1, a, c],
+    ]);
+    expect(log[0].note).toBe('Please?');
+    expect((await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`)).body.changedShiftIds.sort()).toEqual([w1, w2].sort());
   }, 30_000);
 });
 

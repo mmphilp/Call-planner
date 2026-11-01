@@ -150,6 +150,7 @@ export default function ScheduleScreen() {
     <ShiftLine
       key={s.id}
       flagged={flagged.has(s.id)}
+      updated={!!full?.changedShiftIds?.includes(s.id)}
       onPress={canFlag ? () => router.push({ pathname: '/flag', params: { shiftId: s.id, periodId: schedule!.period.id } }) : undefined}
       label={`${services.get(s.serviceId)?.name} · ${kindLabel(s)}`}
       sub={withTimes ? shiftSpan(s) : undefined}
@@ -335,9 +336,12 @@ function ShiftLine({
   locum,
   me,
   flagged,
+  updated,
   onPress,
 }: {
   flagged?: boolean;
+  /** Changed after the schedule was published. */
+  updated?: boolean;
   /** Set on a proposed schedule: tap to flag this assignment. */
   onPress?: () => void;
   label: string;
@@ -367,6 +371,7 @@ function ShiftLine({
         </T>
       </View>
       {flagged && <Badge label="Flagged" tone="warn" />}
+      {updated && !flagged && <Badge label="Updated" tone="ok" />}
       {onPress ? (
         <T muted size={18}>›</T>
       ) : person?.phone && !me ? (

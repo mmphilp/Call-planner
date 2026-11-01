@@ -193,3 +193,9 @@ dialog::backdrop { background: rgb(0 0 0 / 0.4); }
 .flag-card { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; padding: 12px 0; border-bottom: 1px solid var(--border); }
 .flag-card:last-child { border-bottom: none; }
 .flag-card textarea { width: 100%; min-height: 54px; font: inherit; }
+
+/* Changed after publishing */
+.changed-mark { color: var(--accent); font-weight: 700; }
+.sched .cell.changed::after { content: '✎'; color: var(--accent); font-weight: 700; font-size: 12px; }
+.cal-line .changed-mark { margin-left: 3px; font-size: 11px; }
+.change-row td { vertical-align: top; }

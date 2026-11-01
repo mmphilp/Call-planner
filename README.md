@@ -21,6 +21,7 @@ Call scheduling for a surgical group: surgeons send requests from an iPhone/Andr
 3. **Build schedule** (admin): close requests, approve/deny them, click **Generate optimized schedule**, then adjust by hand. Any hand-picked assignment is locked, so re-optimizing works around it.
 4. **Review**: click **Send for review**. Surgeons see the proposed schedule in the app (marked *Proposed*, and not yet in their calendars) and can tap any assignment, theirs or anyone's, to flag it with a note. Flags land on the schedule's *Review* tab and are marked on the Schedule grid; fix the schedule, then mark each flag *Fixed* or *No change needed*, with an optional reply the surgeon sees. Team admins resolve flags on their team's weekday shifts. You can skip this step.
 5. **Publish**: surgeons see their call in the app and can subscribe to it in their phone's calendar.
+6. **Changes after publishing**: change a single shift (who's on, or locum cover) right on the published schedule's Schedule tab; it goes live in the app and calendars straight away. Changed shifts are marked ✎ in the console and *Updated* in the app. Re-optimizing, clearing or rebuilding still needs **Unpublish for bigger changes**. Every change after publishing (hand edits, approved swaps, anything changed while unpublished, and publish/unpublish events) is recorded on the schedule's **Changes** tab, which only the overall admin sees.
 
 ### Multi-specialty groups: team admins and routine days
 

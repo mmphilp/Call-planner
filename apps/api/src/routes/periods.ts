@@ -20,6 +20,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { transaction, type Db } from '../db';
 import { calendarHolidays, defaultHolidays, nameShifts, normalizeHolidays } from '../holidays';
+import { changedShiftIds, holderOf, logShiftChange, logStatus, snapshotOnPublish } from '../changelog';
 import { evaluatePeriod, regenerate as syncRegenerate, refreshCover as syncRefreshCover, shiftsOutOfDate } from '../sync';
 import { canEditShift, canView, dateStr, httpError, me, parse, requireAdmin, requireScheduler, requireViewer } from '../http';
 import {
@@ -100,12 +101,16 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     return p;
   };
 
-  /** An unpublished period; by default only the overall admin may change it. */
-  const editablePeriod = (req: FastifyRequest, id: string, opts: { teamAdmins?: boolean } = {}): Period => {
+  /**
+   * A period the current user may change: unpublished, or published for
+   * one-shift edits (which go live and are logged). By default only the
+   * overall admin may change it.
+   */
+  const editablePeriod = (req: FastifyRequest, id: string, opts: { teamAdmins?: boolean; published?: boolean } = {}): Period => {
     if (opts.teamAdmins) requireScheduler(req);
     else requireAdmin(req);
     const p = visiblePeriod(req, id);
-    if (p.status === 'published') throw httpError(409, 'Unpublish the schedule before changing it');
+    if (p.status === 'published' && !opts.published) throw httpError(409, 'Unpublish the schedule before changing it');
     return p;
   };
 
@@ -211,6 +216,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     if (p.status === 'published' && (body.holidays || body.rules) && body.status !== 'closed') {
       throw httpError(409, 'Unpublish the schedule before changing it');
     }
+    const statusChanged = !!body.status && body.status !== p.status;
     transaction(db, () => {
       if (body.status) {
         db.prepare('UPDATE periods SET status = ?, published_at = ? WHERE id = ?').run(
@@ -229,6 +235,11 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     });
     const updated = getPeriod(db, p.id)!;
     if (body.holidays) regenerate(updated);
+    if (statusChanged) {
+      logStatus(db, p.id, me(req).id, body.status!);
+      // Publishing logs anything changed while it was unpublished.
+      if (body.status === 'published') snapshotOnPublish(db, p.id, me(req).id);
+    }
     return updated;
   });
 
@@ -254,6 +265,8 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
       services: listServices(db),
       shifts: nameShifts(listShifts(db, p.id), p.holidays),
       calendarHolidays: calendarHolidays(p.startDate, p.endDate, p.holidays),
+      // Shifts changed after the schedule was first published.
+      changedShiftIds: changedShiftIds(db, p.id),
       // Surgeons see assignments once the schedule is out for review (proposed) or published.
       assignments: isAdmin || p.status === 'published' || p.status === 'review' ? listAssignments(db, p.id) : [],
       people,
@@ -390,9 +403,11 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
   };
 
   app.put<{ Params: { id: string; shiftId: string } }>('/api/periods/:id/assignments/:shiftId', async (req) => {
-    const p = editablePeriod(req, req.params.id, { teamAdmins: true });
+    // One shift at a time works on a published schedule too; it goes live and is logged.
+    const p = editablePeriod(req, req.params.id, { teamAdmins: true, published: true });
     const body = parse(z.object({ userId: z.string().nullable(), locked: z.boolean().optional() }), req.body);
     editableShift(req, p.id, req.params.shiftId);
+    const before = holderOf(db, req.params.shiftId);
     if (body.userId === null) {
       db.prepare('DELETE FROM assignments WHERE shift_id = ?').run(req.params.shiftId);
     } else {
@@ -403,19 +418,26 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
          ON CONFLICT (shift_id) DO UPDATE SET user_id = excluded.user_id, locked = excluded.locked, source = NULL`,
       ).run(req.params.shiftId, body.userId, body.locked === false ? 0 : 1);
     }
+    if (p.status === 'published') {
+      logShiftChange(db, { shiftId: req.params.shiftId, byUserId: me(req).id, via: 'edit', from: before, to: holderOf(db, req.params.shiftId) });
+    }
     refreshCover(p.id);
     return { ok: true };
   });
 
   /** Mark a shift as covered from outside the call pool (e.g. a locum), or clear it. */
   app.put<{ Params: { id: string; shiftId: string } }>('/api/periods/:id/shifts/:shiftId/cover', async (req) => {
-    const p = editablePeriod(req, req.params.id, { teamAdmins: true });
+    const p = editablePeriod(req, req.params.id, { teamAdmins: true, published: true });
     const { coveredBy } = parse(z.object({ coveredBy: z.string().trim().min(1).max(100).nullable() }), req.body);
     editableShift(req, p.id, req.params.shiftId);
+    const before = holderOf(db, req.params.shiftId);
     transaction(db, () => {
       db.prepare('UPDATE shifts SET covered_by = ? WHERE id = ?').run(coveredBy, req.params.shiftId);
       if (coveredBy) db.prepare('DELETE FROM assignments WHERE shift_id = ?').run(req.params.shiftId);
     });
+    if (p.status === 'published') {
+      logShiftChange(db, { shiftId: req.params.shiftId, byUserId: me(req).id, via: 'edit', from: before, to: holderOf(db, req.params.shiftId) });
+    }
     refreshCover(p.id);
     return { ok: true };
   });
@@ -452,6 +474,30 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     return csv;
   });
 
+  /** Everything changed on a schedule after it was published, newest first. Overall admin only. */
+  app.get<{ Params: { id: string } }>('/api/periods/:id/changes', async (req) => {
+    requireAdmin(req);
+    const p = visiblePeriod(req, req.params.id);
+    const names = new Map(listUsers(db).map((u) => [u.id, u.name]));
+    const services = new Map(listServices(db).map((s) => [s.id, s.name]));
+    const person = (id: string | null) => (id ? { id, name: names.get(id) ?? 'Removed user' } : null);
+    const rows = db.prepare('SELECT * FROM change_log WHERE period_id = ? ORDER BY at DESC').all(p.id) as any[];
+    return rows.map((r) => ({
+      id: r.id,
+      at: r.at,
+      by: person(r.by_user_id),
+      action: r.action as 'shift' | 'status',
+      via: r.via as 'edit' | 'swap' | 'republish' | null,
+      status: r.status as Period['status'] | null,
+      shift: r.shift_id
+        ? { id: r.shift_id, serviceId: r.service_id, serviceName: services.get(r.service_id) ?? r.service_id, kind: r.kind, date: r.date, start: r.start, end: r.end }
+        : null,
+      from: r.action === 'shift' ? { user: person(r.from_user_id), cover: r.from_cover } : null,
+      to: r.action === 'shift' ? { user: person(r.to_user_id), cover: r.to_cover } : null,
+      note: r.note,
+    }));
+  });
+
   /** The signed-in surgeon's own shifts in published schedules, and proposed ones out for review. */
   app.get('/api/me/shifts', async (req) => {
     const q = parse(z.object({ from: dateStr.optional() }), req.query);
@@ -466,6 +512,11 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
       )
       .all(me(req).id, q.from ?? '0000') as any[];
     const periodHolidays = new Map(listPeriods(db).map((p) => [p.id, p.holidays]));
+    const changed = new Set(
+      (db.prepare("SELECT DISTINCT shift_id FROM change_log WHERE action = 'shift' AND shift_id IS NOT NULL").all() as { shift_id: string }[]).map(
+        (r) => r.shift_id,
+      ),
+    );
     return rows.map((r) => ({
       holidayName: nameShifts<Shift>(
         [{ id: r.id, serviceId: r.service_id, kind: r.kind, date: r.date, start: r.start, end: r.end }],
@@ -483,6 +534,8 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
       holiday: !!r.holiday,
       // Out for review: not final, and can be flagged rather than traded.
       proposed: r.period_status === 'review',
+      // Changed after the schedule was published (swap, or the scheduler moved it).
+      changed: changed.has(r.id),
     }));
   });
 }

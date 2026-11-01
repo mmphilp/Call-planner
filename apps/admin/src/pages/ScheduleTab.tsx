@@ -37,7 +37,13 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
   const { schedule, requests, report, users } = data;
   const p = schedule.period;
   const { me, isSuper, isViewer, canEditShift } = useMe();
-  const editable = p.status !== 'published';
+  // Bulk changes (optimize, clear) need an unpublished schedule; single shifts
+  // can be changed any time, going live straight away on a published one.
+  const published = p.status === 'published';
+  const editable = !published;
+  const changed = useMemo(() => new Set(schedule.changedShiftIds ?? []), [schedule.changedShiftIds]);
+  /** On a published schedule, check before a change goes live. */
+  const goLive = (what: string) => !published || confirm(`${what}\n\nThis schedule is published, so the change goes live in the app and calendars straight away, and is recorded in the change log.`);
   const [month, setMonth] = useState(Number(p.startDate.slice(5, 7)) - 1);
   const [highlight, setHighlight] = useState('');
   const [busy, setBusy] = useState(false);
@@ -114,6 +120,12 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
   };
 
   const assign = async (shiftId: string, userId: string | null, locked?: boolean) => {
+    // Locking doesn't change who's on call, so it needs no check.
+    if (locked === undefined) {
+      const s = shiftById.get(shiftId);
+      const who = userId ? nameOf.get(userId) : 'nobody';
+      if (s && !goLive(`Put ${who} on ${longDate(s.date)}?`)) return reload();
+    }
     setError(null);
     try {
       await put(`/api/periods/${p.id}/assignments/${encodeURIComponent(shiftId)}`, { userId, locked });
@@ -124,6 +136,7 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
   };
 
   const setCover = async (shiftId: string, coveredBy: string | null) => {
+    if (!goLive(coveredBy ? `Mark this shift as covered by ${coveredBy}?` : 'Remove the locum cover?')) return;
     setError(null);
     try {
       await put(`/api/periods/${p.id}/shifts/${encodeURIComponent(shiftId)}/cover`, { coveredBy });
@@ -139,7 +152,7 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
       return (
         <div className="cell locum" title="Covered from outside the call pool; the optimizer skips this shift">
           <span className="badge">{/locum/i.test(shift.coveredBy) ? shift.coveredBy : `Locum: ${shift.coveredBy}`}</span>
-          {editable && canEditShift(shift) && (
+          {canEditShift(shift) && !isViewer && (
             <button className="link" title="Remove locum cover" onClick={() => setCover(shift.id, null)}>×</button>
           )}
         </div>
@@ -147,7 +160,7 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
     }
     const a = owner.get(shift.id);
     const issues = problems.get(shift.id);
-    const canEdit = editable && canEditShift(shift);
+    const canEdit = canEditShift(shift) && !isViewer;
     const eligible = pool.filter((u) => u.serviceIds.includes(shift.serviceId));
     const flag = (uid: string) => {
       const rs = requests.filter((r) => r.userId === uid && r.status !== 'denied' && touches(r, shift));
@@ -157,14 +170,14 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
       return '';
     };
     const flagged = data.flags.filter((f) => f.status === 'open' && f.shift.id === shift.id);
-    const classes = ['cell', shift.kind === 'weekend' && 'weekend', issues && 'violation', !a && 'empty', a?.source === 'backup' && 'cover', flagged.length && 'flagged']
+    const classes = ['cell', shift.kind === 'weekend' && 'weekend', issues && 'violation', !a && 'empty', a?.source === 'backup' && 'cover', flagged.length && 'flagged', changed.has(shift.id) && 'changed']
       .filter(Boolean)
       .join(' ');
     return (
       <div
         className={classes}
         title={
-          [...(issues ?? []), ...flagged.map((f) => `Flagged by ${f.from.name}: ${f.note}`)].join('\n') ||
+          [...(issues ?? []), ...flagged.map((f) => `Flagged by ${f.from.name}: ${f.note}`), ...(changed.has(shift.id) ? ['Changed since publishing'] : [])].join('\n') ||
           (shift.kind === 'weekend' ? longSpan(shift.start, shift.end) : undefined)
         }
       >
@@ -235,7 +248,12 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
             </select>
           </label>
         </div>
-        {!editable && <p className="muted small">This schedule is published. Unpublish it on the Overview tab to make changes.</p>}
+        {published && (
+          <p className="muted small">
+            This schedule is published. You can still change a single shift: it goes live straight away and is recorded in the change
+            log. Changed shifts are marked <span className="changed-mark">✎</span>. To re-optimize or clear, unpublish it on the Overview tab.
+          </p>
+        )}
         {summary && (
           <div className={`alert ${summary.unassignedShiftIds.length || summary.violations.length > summary.unassignedShiftIds.length ? 'error' : 'ok'}`} style={{ marginTop: 12, marginBottom: 0 }}>
             Optimized: {poolCount - summary.unassignedShiftIds.length} of {poolCount} shifts filled

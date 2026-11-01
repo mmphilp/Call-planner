@@ -190,6 +190,7 @@ function ShiftRow({ shift }: { shift: MyShift }) {
         </T>
       </View>
       {shift.proposed && <Badge label="Proposed" />}
+      {shift.changed && <Badge label="Updated" tone="ok" />}
       {shift.holiday && <Badge label={shift.holidayName ?? 'Holiday'} tone="warn" />}
       {!over && <T muted size={18}>›</T>}
     </Card>

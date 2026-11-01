@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { del, get, patch, post, type Flag, type Period, type Report, type RequestRow, type Schedule, type User, type Trade } from '../api';
 import { useMe } from '../me';
 import { useLoad } from '../useLoad';
+import { ChangesTab } from './ChangesTab';
 import { FairnessTab } from './FairnessTab';
 import { STATUS_LABEL } from './Periods';
 import { RequestsTab } from './RequestsTab';
@@ -20,7 +21,7 @@ export interface PeriodData {
   flags: Flag[];
 }
 
-type Tab = 'overview' | 'requests' | 'schedule' | 'review' | 'swaps' | 'fairness' | 'rules';
+type Tab = 'overview' | 'requests' | 'schedule' | 'review' | 'swaps' | 'changes' | 'fairness' | 'rules';
 
 export function PeriodPage() {
   const { id } = useParams();
@@ -72,6 +73,7 @@ export function PeriodPage() {
             ['schedule', 'Schedule'],
             ['review', `Review${openFlags ? ` (${openFlags})` : ''}`],
             ['swaps', `Swaps${swapsWaiting ? ` (${swapsWaiting})` : ''}`],
+            ['changes', 'Changes'],
             ['fairness', 'Fairness'],
             ['rules', 'Rules'],
           ] as [Tab, string][]
@@ -80,6 +82,8 @@ export function PeriodPage() {
           .filter(([t]) => isSuper || t === 'requests' || t === 'schedule' || t === 'review' || t === 'swaps' || t === 'fairness')
           // Review appears once a schedule has been out for review.
           .filter(([t]) => t !== 'review' || p.status === 'review' || data.flags.length > 0)
+          // The change log is for the overall admin, once the schedule has been published.
+          .filter(([t]) => t !== 'changes' || (isSuper && p.status !== 'draft' && p.status !== 'open'))
           .map(([t, label]) => (
           <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
             {label}
@@ -90,6 +94,7 @@ export function PeriodPage() {
       {tab === 'requests' && <RequestsTab data={data} reload={reload} />}
       {tab === 'schedule' && <ScheduleTab data={data} reload={reload} />}
       {tab === 'review' && <ReviewTab data={data} reload={reload} />}
+      {tab === 'changes' && isSuper && <ChangesTab periodId={p.id} />}
       {tab === 'swaps' && <SwapsTab data={data} reload={reload} />}
       {tab === 'fairness' && <FairnessTab data={data} />}
       {tab === 'rules' && <RulesTab period={p} reload={reload} />}
@@ -223,7 +228,20 @@ function Overview({ data, reload, goTo }: { data: PeriodData; reload: () => void
               </button>
             </>
           )}
-          {p.status === 'published' && <button onClick={setStatus('closed')}>Unpublish to make changes</button>}
+          {p.status === 'published' && (
+            <>
+              <button onClick={() => goTo('schedule')}>Change a shift</button>
+              <button
+                onClick={() =>
+                  confirm('Unpublish? Surgeons won’t see this schedule, and it leaves their calendars, until you publish again. To change a single shift, you don’t need to unpublish.') &&
+                  setStatus('closed')()
+                }
+              >
+                Unpublish for bigger changes
+              </button>
+              <span className="muted small">Single shifts can be changed on the Schedule tab while published; changes are logged.</span>
+            </>
+          )}
           {p.status === 'draft' && (
             <button className="danger" onClick={() => confirm('Delete this schedule period?') && run(() => del(`/api/periods/${p.id}`))().then(() => history.back())}>
               Delete

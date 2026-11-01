@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { transaction, type Db } from '../db';
 import { canEditShift, canView, httpError, me, parse } from '../http';
 import { getPeriod, listAssignments, listServices, listUsers, type User } from '../repo';
+import { holderOf, logShiftChange } from '../changelog';
 import { evaluatePeriod, refreshCover } from '../sync';
 
 type Status = 'open' | 'proposed' | 'accepted' | 'approved' | 'declined' | 'cancelled' | 'rejected';
@@ -245,12 +246,18 @@ export function tradeRoutes(app: FastifyInstance, db: Db) {
     // Make sure nothing changed hands since both sides agreed.
     if (ownerOf(t.shift_id) !== t.from_user) throw httpError(409, 'The offered shift changed hands since this was agreed');
     if (t.their_shift_id && ownerOf(t.their_shift_id) !== t.to_user) throw httpError(409, 'The other shift changed hands; ask them to propose again');
+    const ids = [t.shift_id, t.their_shift_id].filter(Boolean) as string[];
+    const before = ids.map((id) => holderOf(db, id));
     transaction(db, () => {
       // Hand-placed, so re-optimizing keeps the new owners.
       const set = db.prepare("UPDATE assignments SET user_id = ?, locked = 1, source = NULL WHERE shift_id = ?");
       set.run(t.to_user, t.shift_id);
       if (t.their_shift_id) set.run(t.from_user, t.their_shift_id);
     });
+    // Logged as a swap, approved by this admin.
+    ids.forEach((id, i) =>
+      logShiftChange(db, { shiftId: id, byUserId: user.id, via: 'swap', from: before[i], to: holderOf(db, id), note: t.note }),
+    );
     for (const periodId of new Set([t.period_id, t.their_shift_id && shift(t.their_shift_id)?.period_id].filter(Boolean) as string[])) {
       refreshCover(db, periodId);
     }

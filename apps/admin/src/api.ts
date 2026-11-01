@@ -60,6 +60,23 @@ export interface Schedule {
   /** source 'backup': filled automatically by the team's covering service. */
   assignments: (Assignment & { source?: 'backup' })[];
   people: { id: string; name: string }[];
+  /** Shifts changed after the schedule was first published. */
+  changedShiftIds?: string[];
+}
+
+/** One entry in a schedule's change log (overall admin only). */
+export interface ChangeEntry {
+  id: string;
+  at: string;
+  by: { id: string; name: string } | null;
+  action: 'shift' | 'status';
+  /** How a shift changed: by hand, an approved swap, or while unpublished (found on republishing). */
+  via: 'edit' | 'swap' | 'republish' | null;
+  status: PeriodStatus | null;
+  shift: TradeShift | null;
+  from: { user: { id: string; name: string } | null; cover: string | null } | null;
+  to: { user: { id: string; name: string } | null; cover: string | null } | null;
+  note: string;
 }
 
 export interface TradeShift {
