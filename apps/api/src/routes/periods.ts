@@ -9,6 +9,7 @@ import {
   optimizeSchedule,
   planWeeks,
   requestCovers,
+  trackedHoliday,
   weekStart,
   type Assignment,
   type Half,
@@ -72,7 +73,10 @@ const periodPatch = z.object({
 });
 
 interface HolidayOccurrence {
+  /** The holiday as tracked for rotation, e.g. "Christmas". */
   name: string;
+  /** How to show it, e.g. "Christmas Eve & Christmas". */
+  label: string;
   /** The observed day. */
   date: string;
   periodId: string;
@@ -116,10 +120,13 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
       for (const s of nameShifts(listShifts(db, period.id), period.holidays)) {
         const a = owner.get(s.id);
         for (const name of s.holidayNames ?? []) {
-        const h = period.holidays.find((x) => x.name === name)!;
-        const key = `${h.name}|${h.date}`;
+        // Christmas Eve and Christmas are tracked together, dated on Christmas when it's observed.
+        const group = period.holidays.filter((x) => trackedHoliday(x.name) === name);
+        const h = group.find((x) => x.name === name) ?? group[0];
+        const key = `${name}|${h.date}`;
         if (!byHoliday.has(key)) {
-          byHoliday.set(key, { name: h.name, date: h.date, periodId: period.id, periodLabel: period.label, status: period.status, covers: [] });
+          const label = [...new Set(group.map((x) => x.name))].join(' & ');
+          byHoliday.set(key, { name, label, date: h.date, periodId: period.id, periodLabel: period.label, status: period.status, covers: [] });
         }
         byHoliday.get(key)!.covers.push({
           shiftId: s.id,

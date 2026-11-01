@@ -75,6 +75,12 @@ export interface Holiday {
 
 export const HOLIDAY_NAMES = ['New Year’s Day', 'Memorial Day', 'Juneteenth', 'Fourth of July', 'Labor Day', 'Thanksgiving', 'Christmas Eve', 'Christmas'];
 
+/**
+ * The holiday a day counts as for tracking and rotation: Christmas Eve and
+ * Christmas are one holiday ("Christmas"); every other holiday is its own.
+ */
+export const trackedHoliday = (name: string) => (name === 'Christmas Eve' ? 'Christmas' : name);
+
 /** The n-th given weekday of a month (n = -1 for the last). */
 function nthWeekday(year: number, month: number, weekday: number, n: number): DateStr {
   if (n > 0) {

@@ -4,6 +4,8 @@ import { useLoad } from '../useLoad';
 
 interface Occurrence {
   name: string;
+  /** e.g. "Christmas Eve & Christmas", which count as one holiday. */
+  label?: string;
   date: string;
   periodId: string;
   periodLabel: string;
@@ -62,7 +64,7 @@ export function HolidaysPage() {
                 <th className="num">Holidays</th>
                 {columns.map((o) => (
                   <th key={`${o.name}${o.date}`} title={`${o.periodLabel}${o.status === 'published' ? '' : ' (not published yet)'}`}>
-                    {o.name}
+                    {o.label ?? o.name}
                     <div className="small" style={{ fontWeight: 400 }}>
                       {longDate(o.date, { year: true })}
                       {o.status !== 'published' && ' · draft'}

@@ -43,7 +43,7 @@ Call scheduling for a surgical group: surgeons send requests from an iPhone/Andr
 * **Holidays.** The group's holidays are New Year's Day, Memorial Day, Juneteenth, Fourth of July, Labor Day, Thanksgiving, Christmas Eve and Christmas.
   * They're marked by name on every calendar.
   * Each schedule's Overview tab sets the day the hospital *observes* each one. New schedules start on the usual rule: Saturday → Friday, Sunday → Monday.
-  * Observed days are covered by the weekend service only: they stretch long weekends, or get a holiday block of their own. To add another day the hospital observes, add it to the schedule's list. A block that takes in two holidays (Christmas Eve and Christmas) counts toward both in the rotation.
+  * Observed days are covered by the weekend service only: they stretch long weekends, or get a holiday block of their own. To add another day the hospital observes, add it to the schedule's list. Christmas Eve and Christmas count as one holiday on the *Holidays* page and in the rotation.
   * The *Holidays* page shows who covered which holiday each year. The optimizer rotates a holiday away from whoever had it last time.
 * **Swaps and giveaways.** On a published schedule, a surgeon taps a shift in *My Call* to offer it to anyone who covers that service, or to propose a swap for a colleague's shift of the same kind.
   * Once it's taken or accepted, it appears on the schedule's *Swaps* tab. The admin sees any rule problems it would cause before approving.

@@ -281,14 +281,15 @@ describe('holidays', () => {
     const xmas26 = history.find((o: any) => o.name === 'Christmas' && o.date === '2026-12-25');
     const hadIt = xmas26.covers.find((c: any) => c.kind === 'weekend').userId;
     expect(hadIt).toBeTruthy();
-    // Christmas Eve and Christmas are one block from 7am Christmas Eve, counted for both holidays.
+    // Christmas Eve and Christmas are one block from 7am Christmas Eve, tracked as one holiday.
     const sched2 = (await call(adminToken, 'GET', `/api/periods/${y1.id}/schedule`)).body;
     expect(sched2.shifts.find((s: any) => s.id === 'general:weekend:2026-12-25')).toMatchObject({
       start: '2026-12-24T07:00',
       holidayName: 'Christmas Eve & Christmas',
     });
-    const eve26 = history.find((o: any) => o.name === 'Christmas Eve' && o.date === '2026-12-24');
-    expect(eve26.covers.find((c: any) => c.kind === 'weekend').userId).toBe(hadIt);
+    expect(xmas26.label).toBe('Christmas Eve & Christmas');
+    expect(history.some((o: any) => o.name === 'Christmas Eve')).toBe(false);
+    expect(xmas26.covers.filter((c: any) => c.kind === 'weekend')).toHaveLength(1);
 
     // Next year: whoever had the Christmas weekend is rotated off it.
     const { body: y2 } = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2 });

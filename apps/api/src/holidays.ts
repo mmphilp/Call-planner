@@ -1,4 +1,4 @@
-import { addDays, standardHolidays, type Shift } from '@call-planner/core';
+import { addDays, standardHolidays, trackedHoliday, type Shift } from '@call-planner/core';
 
 /** A holiday as a schedule observes it: `date` is the day the hospital observes. */
 export interface PeriodHoliday {
@@ -70,7 +70,11 @@ export function nameShifts<T extends Shift>(shifts: T[], holidays: PeriodHoliday
         ? holidays.filter((x) => x.date >= s.start.slice(0, 10) && x.date < s.end.slice(0, 10))
         : holidays.filter((x) => x.date === s.date);
     if (!hs.length) return s;
-    const names = [...new Set(hs.map((h) => h.name))];
-    return { ...s, holidayName: names.join(' & '), holidayNames: names };
+    // Shown with every name; tracked once per holiday (Christmas Eve counts as Christmas).
+    return {
+      ...s,
+      holidayName: [...new Set(hs.map((h) => h.name))].join(' & '),
+      holidayNames: [...new Set(hs.map((h) => trackedHoliday(h.name)))],
+    };
   });
 }
