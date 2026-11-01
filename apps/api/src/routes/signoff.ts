@@ -188,6 +188,8 @@ export function signoffRoutes(app: FastifyInstance, db: Db) {
     const user = me(req);
     const p = period(req);
     const body = parse(approvalBody, req.body);
+    // A surgeon's approval is final; they approve again if their shifts change.
+    if (body.kind === 'surgeon') throw httpError(409, 'Once you’ve approved your schedule it can’t be withdrawn');
     const { subject } = subjectFor(user, p, body);
     db.prepare('DELETE FROM approvals WHERE period_id = ? AND kind = ? AND subject = ?').run(p.id, body.kind, subject);
     return { ok: true };

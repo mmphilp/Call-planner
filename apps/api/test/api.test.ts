@@ -465,6 +465,9 @@ describe('per-service publishing and sign-offs', () => {
     // Surgeons approve their own schedule; it shows as changed if their shifts move.
     expect((await call(s1, 'POST', `/api/periods/${p.id}/approvals`, { kind: 'surgeon', note: 'Looks good' })).status).toBe(201);
     expect((await call(s1, 'GET', '/api/me/approvals')).body).toMatchObject([{ periodId: p.id, note: 'Looks good', current: true }]);
+    // A surgeon's approval can't be taken back.
+    expect((await call(s1, 'POST', `/api/periods/${p.id}/approvals/withdraw`, { kind: 'surgeon' })).status).toBe(409);
+    expect((await call(s1, 'GET', '/api/me/approvals')).body).toHaveLength(1);
     const s1General = sched.assignments.find((a: any) => a.userId === id('s1@x.org') && a.shiftId.startsWith('general:'));
     await call(adminToken, 'PUT', `/api/periods/${p.id}/assignments/${encodeURIComponent(s1General.shiftId)}`, { userId: id('s8@x.org') });
     expect((await call(s1, 'GET', '/api/me/approvals')).body[0].current).toBe(false);
