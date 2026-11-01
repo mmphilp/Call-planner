@@ -7,6 +7,7 @@ import { useLoad } from '../useLoad';
 import { ChangesTab } from './ChangesTab';
 import { FairnessTab } from './FairnessTab';
 import { STATUS_LABEL } from './Periods';
+import { publishQuestion, servicesPublished } from './publish';
 import { RequestsTab } from './RequestsTab';
 import { ReviewTab } from './ReviewTab';
 import { ScheduleTab } from './ScheduleTab';
@@ -169,15 +170,11 @@ function Overview({ data, reload, goTo }: { data: PeriodData; reload: () => void
   const pending = data.requests.filter((r) => r.status === 'pending').length;
   const ruleBreaks = data.report.violations.filter((v) => v.type !== 'unassigned').length;
   const openFlags = data.flags.filter((f) => f.status === 'open').length;
-  const publish = () => {
-    const problems = [
-      total - assigned && `${total - assigned} shift${total - assigned === 1 ? ' is' : 's are'} unfilled`,
-      ruleBreaks && `${ruleBreaks} rule problem${ruleBreaks === 1 ? ' remains' : 's remain'}`,
-      openFlags && `${openFlags} flag${openFlags === 1 ? '' : 's'} from surgeons ${openFlags === 1 ? 'is' : 'are'} still open`,
-    ].filter(Boolean);
-    const warn = problems.length ? `${problems.join(', ')}. Publish anyway?` : 'Publish this schedule as final?';
-    if (confirm(warn)) setStatus('published')();
-  };
+  // Publishes every service, including any already published on their own.
+  const publish = () => confirm(publishQuestion(data)) && setStatus('published')();
+  const svc = servicesPublished(data);
+  // Some services already published on their own: step 5 is partly done.
+  const partial = p.status !== 'published' && svc.published.length > 0;
 
   const run = (fn: () => Promise<unknown>) => async () => {
     setError(null);
@@ -196,12 +193,19 @@ function Overview({ data, reload, goTo }: { data: PeriodData; reload: () => void
       {error && <div className="alert error">{error}</div>}
       <div className="card">
         <div className="stepper">
-          {STEPS.map((s, i) => (
-            <div key={s.status} className={`step ${i < idx ? 'done' : ''} ${i === idx ? 'current' : ''}`}>
-              <div>{s.title}</div>
-              <div className="small">{s.hint}</div>
-            </div>
-          ))}
+          {STEPS.map((s, i) => {
+            const part = partial && s.status === 'published';
+            return (
+              <div
+                key={s.status}
+                className={`step ${i < idx ? 'done' : ''} ${i === idx ? 'current' : ''} ${part ? 'partial' : ''}`}
+                title={part ? `Published on their own: ${svc.published.map((x) => x.name).join(', ')}` : undefined}
+              >
+                <div>{s.title}{part && ' (partly)'}</div>
+                <div className="small">{part ? `${svc.published.length} of ${svc.total} services published` : s.hint}</div>
+              </div>
+            );
+          })}
         </div>
         <div className="row" style={{ marginTop: 14 }}>
           {p.status === 'draft' && <button className="primary" onClick={setStatus('open')}>Open for requests</button>}

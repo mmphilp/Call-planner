@@ -1,9 +1,10 @@
 import { longDate, longSpan } from '@call-planner/core';
 import { useState } from 'react';
-import { get, post, type Approval, type Flag, type SignoffService } from '../api';
+import { get, patch, post, type Approval, type Flag, type SignoffService } from '../api';
 import { useMe } from '../me';
 import { useLoad } from '../useLoad';
 import type { PeriodData } from './Period';
+import { publishQuestion, servicesPublished } from './publish';
 
 const KIND = { day: 'day call', night: 'night call', weekend: 'weekend' } as const;
 
@@ -117,15 +118,27 @@ function Signoff({ data, reload }: { data: PeriodData; reload: () => void }) {
     confirm(`${question}\n\nThey’ll see “Please check your schedule” in the app again and can re-approve.`) &&
     act(() => post(`/api/periods/${p.id}/approvals/reset`, body));
   const anyApproved = signoff.data.services.some((s) => s.surgeons.some((u) => u.approval));
+  // Publish everything at once (same as Publish final schedule on Overview).
+  const canPublishAll = isSuper && (p.status === 'closed' || p.status === 'review');
+  const publishAll = () => confirm(publishQuestion(data)) && act(() => patch(`/api/periods/${p.id}`, { status: 'published' }));
+  const svc = servicesPublished(data);
 
   return (
     <div className="card" style={{ padding: 0 }}>
-      {isSuper && anyApproved && (
+      {(canPublishAll || (isSuper && anyApproved)) && (
         <div className="row" style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
           <span className="muted small" style={{ flex: 1 }}>
-            Sent out a revised schedule? Clear everyone’s approval so they check it again.
+            {svc.published.length > 0 && p.status !== 'published' && `${svc.published.length} of ${svc.total} services published. `}
+            {isSuper && anyApproved && 'Sent out a revised schedule? Ask everyone to approve again.'}
           </span>
-          <button onClick={() => reset({}, 'Ask every surgeon to review and approve again?')}>Ask everyone to approve again</button>
+          {isSuper && anyApproved && (
+            <button onClick={() => reset({}, 'Ask every surgeon to review and approve again?')}>Ask everyone to approve again</button>
+          )}
+          {canPublishAll && (
+            <button className="primary" onClick={publishAll}>
+              {svc.published.length ? 'Publish the rest' : 'Publish all'}
+            </button>
+          )}
         </div>
       )}
       {error && <div className="alert error" style={{ margin: 12 }}>{error}</div>}
