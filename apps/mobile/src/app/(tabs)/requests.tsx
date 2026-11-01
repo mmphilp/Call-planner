@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
-import { Alert, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Badge, Button, Card, Empty, ErrorText, Screen, SectionHeader, T, useApi } from '@/components/ui';
 import { api, type CallRequest, type Period } from '@/lib/api';
+import { confirmAsync, notify } from '@/lib/dialogs';
 import { dateRange, shortDate, todayStr } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
@@ -30,22 +31,15 @@ export default function RequestsScreen() {
 
   const open = data?.periods.filter(acceptingRequests) ?? [];
 
-  const withdraw = (r: CallRequest) =>
-    Alert.alert('Withdraw request?', dateRange(r.startDate, r.endDate), [
-      { text: 'Keep', style: 'cancel' },
-      {
-        text: 'Withdraw',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await api('DELETE', `/api/requests/${r.id}`);
-            reload();
-          } catch (e) {
-            Alert.alert('Could not withdraw', (e as Error).message);
-          }
-        },
-      },
-    ]);
+  const withdraw = async (r: CallRequest) => {
+    if (!(await confirmAsync('Withdraw request?', `${TYPE_LABEL[r.type]}: ${dateRange(r.startDate, r.endDate)}`, 'Withdraw', true))) return;
+    try {
+      await api('DELETE', `/api/requests/${r.id}`);
+      reload();
+    } catch (e) {
+      notify('Could not withdraw', (e as Error).message);
+    }
+  };
 
   return (
     <Screen title="Requests" subtitle="Time off and call preferences" refreshing={refreshing} onRefresh={refresh}>

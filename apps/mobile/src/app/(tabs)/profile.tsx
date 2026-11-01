@@ -1,8 +1,9 @@
 import * as Clipboard from 'expo-clipboard';
-import { Alert, Linking, View } from 'react-native';
+import { Linking, View } from 'react-native';
 import { Button, Card, Screen, SectionHeader, T } from '@/components/ui';
 import { API_URL } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { notify } from '@/lib/dialogs';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
@@ -17,7 +18,7 @@ export default function ProfileScreen() {
       await Linking.openURL(webcal);
     } catch {
       await Clipboard.setStringAsync(feedUrl);
-      Alert.alert(
+      notify(
         'Link copied',
         'Paste it into your calendar app as a subscription (Google Calendar: Other calendars → From URL).',
       );
@@ -42,7 +43,7 @@ export default function ProfileScreen() {
           disabled={!feedUrl}
           onPress={async () => {
             if (feedUrl) await Clipboard.setStringAsync(feedUrl);
-            Alert.alert('Copied', 'Keep this link private. Anyone with it can see your call schedule.');
+            notify('Copied', 'Keep this link private. Anyone with it can see your call schedule.');
           }}
         />
       </Card>
