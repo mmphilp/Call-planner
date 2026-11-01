@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { transaction, type Db } from '../db';
 import { LoginGuard } from '../login-guard';
 import { syncUnpublished } from '../sync';
-import { httpError, me, parse, requireAdmin, requireScheduler } from '../http';
+import { httpError, me, parse, requireAdmin, requireViewer } from '../http';
 import { hashPassword, verifyPassword } from '../passwords';
 import { getUser, getUserRowByEmail, listServices, listUsers, setUserAdminServices, setUserServices, toService } from '../repo';
 
@@ -13,7 +13,7 @@ import { getUser, getUserRowByEmail, listServices, listUsers, setUserAdminServic
 const userFields = z.object({
   email: z.string().email(),
   name: z.string().min(1),
-  role: z.enum(['admin', 'surgeon']),
+  role: z.enum(['admin', 'surgeon', 'viewer']),
   fte: z.number().min(0).max(1.5),
   active: z.boolean(),
   takesCall: z.boolean(),
@@ -113,7 +113,7 @@ export function peopleRoutes(app: FastifyInstance, db: Db) {
 
   // Team admins need the roster to fill their team's shifts.
   app.get('/api/users', async (req) => {
-    requireScheduler(req);
+    requireViewer(req);
     return listUsers(db);
   });
 

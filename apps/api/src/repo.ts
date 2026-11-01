@@ -14,7 +14,7 @@ import { calendarHolidays, normalizeHolidays, type CalendarHoliday, type PeriodH
 
 type Row = Record<string, any>;
 
-export type Role = 'admin' | 'surgeon';
+export type Role = 'admin' | 'surgeon' | 'viewer';
 export type PeriodStatus = 'draft' | 'open' | 'closed' | 'published';
 
 export interface User {

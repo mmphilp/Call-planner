@@ -36,7 +36,7 @@ interface Scope {
 export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => void }) {
   const { schedule, requests, report, users } = data;
   const p = schedule.period;
-  const { me, isSuper, canEditShift } = useMe();
+  const { me, isSuper, isViewer, canEditShift } = useMe();
   const editable = p.status !== 'published';
   const [month, setMonth] = useState(Number(p.startDate.slice(5, 7)) - 1);
   const [highlight, setHighlight] = useState('');
@@ -87,7 +87,9 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
   const filter = useServiceFilter();
   // Team admins see just their own teams in the weekday grid.
   const gridServices = sortServices(
-    schedule.services.filter((s) => (s.coversWeekdayDay || s.coversWeekdayNight) && (isSuper || me.adminServiceIds.includes(s.id))),
+    schedule.services.filter(
+      (s) => (s.coversWeekdayDay || s.coversWeekdayNight) && (isSuper || isViewer || me.adminServiceIds.includes(s.id)),
+    ),
   );
   const services = gridServices.filter((s) => !filter.hidden.has(s.id));
 
@@ -201,9 +203,12 @@ export function ScheduleTab({ data, reload }: { data: PeriodData; reload: () => 
               {scopes.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
             </select>
           )}
-          <button className="primary" disabled={!editable || busy || !scope} onClick={optimize}>
-            {busy ? 'Optimizing…' : `Optimize ${scopes.length === 1 && scope ? scope.label.toLowerCase() : ''}`.trim()}
-          </button>
+          {scopes.length > 0 && (
+            <button className="primary" disabled={!editable || busy || !scope} onClick={optimize}>
+              {busy ? 'Optimizing…' : `Optimize ${scopes.length === 1 && scope ? scope.label.toLowerCase() : ''}`.trim()}
+            </button>
+          )}
+          {isViewer && <span className="muted small">View only</span>}
           {editable && schedule.assignments.length > 0 && scope && (
             <button
               onClick={() =>

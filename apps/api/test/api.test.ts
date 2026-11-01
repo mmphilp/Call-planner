@@ -279,6 +279,75 @@ describe('holidays', () => {
   }, 60_000);
 });
 
+describe('viewer role and shift trades', () => {
+  it('lets a viewer see everything but change nothing', async () => {
+    await call(adminToken, 'POST', '/api/users', { email: 'assistant@x.org', name: 'Assistant', role: 'viewer', takesCall: false, password: 'password123' });
+    const viewer = await login('assistant@x.org');
+    const { body: p } = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2 });
+    await call(adminToken, 'POST', `/api/periods/${p.id}/optimize`, { seed: 1, kinds: ['weekend'] });
+
+    // Drafts and assignments are visible…
+    expect((await call(viewer, 'GET', '/api/periods')).body.map((x: any) => x.id)).toContain(p.id);
+    expect((await call(viewer, 'GET', `/api/periods/${p.id}/schedule`)).body.assignments.length).toBeGreaterThan(0);
+    for (const url of [`/api/periods/${p.id}/report`, '/api/users', '/api/holidays/history', `/api/periods/${p.id}/export.csv`, `/api/requests?periodId=${p.id}&all=1`]) {
+      expect((await call(viewer, 'GET', url)).status).toBe(200);
+    }
+    // …but nothing can be changed.
+    const shift = 'general:weekend:2027-07-09';
+    expect((await call(viewer, 'PUT', `/api/periods/${p.id}/assignments/${shift}`, { userId: null })).status).toBe(403);
+    expect((await call(viewer, 'POST', `/api/periods/${p.id}/optimize`, {})).status).toBe(403);
+    expect((await call(viewer, 'PATCH', `/api/periods/${p.id}`, { status: 'published' })).status).toBe(403);
+    expect((await call(viewer, 'POST', '/api/requests', { periodId: p.id, type: 'unavailable', startDate: '2027-08-02', endDate: '2027-08-03' })).status).toBe(403);
+  });
+
+  it('offers, swaps, and admin approval', async () => {
+    const { body: p } = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2 });
+    await call(adminToken, 'POST', `/api/periods/${p.id}/optimize`, { seed: 1, kinds: ['weekend'] });
+    const users = (await call(adminToken, 'GET', '/api/users')).body;
+    const tokenOf = (id: string) => surgeonTokens[Number(users.find((u: any) => u.id === id).email.match(/s(\d)@/)[1]) - 1];
+    const owner = async () => new Map((await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`)).body.assignments.map((a: any) => [a.shiftId, a.userId]));
+    let who = await owner();
+    const w1 = 'general:weekend:2027-07-09';
+    const a = who.get(w1) as string;
+
+    // Not published yet: no trading.
+    expect((await call(tokenOf(a), 'POST', '/api/trades', { shiftId: w1, kind: 'offer' })).status).toBe(409);
+    await call(adminToken, 'PATCH', `/api/periods/${p.id}`, { status: 'published' });
+
+    // Offer: someone else who covers General takes it.
+    const offer = (await call(tokenOf(a), 'POST', '/api/trades', { shiftId: w1, kind: 'offer', note: 'Family wedding' })).body;
+    expect(offer.status).toBe('open');
+    expect((await call(tokenOf(a), 'POST', '/api/trades', { shiftId: w1, kind: 'offer' })).status).toBe(409); // already offered
+    const c = users.find((u: any) => u.serviceIds.includes('general') && u.id !== a && u.role === 'surgeon').id;
+    const seen = (await call(tokenOf(c), 'GET', '/api/trades')).body;
+    expect(seen.map((t: any) => t.id)).toContain(offer.id);
+    expect((await call(tokenOf(c), 'POST', `/api/trades/${offer.id}/take`, {})).body.status).toBe('accepted');
+
+    // A team admin can't approve a weekend; the overall admin can.
+    await call(adminToken, 'PATCH', `/api/users/${users.find((u: any) => u.email === 's8@x.org').id}`, { adminServiceIds: ['general'] });
+    expect((await call(surgeonTokens[7], 'POST', `/api/trades/${offer.id}/approve`, {})).status).toBe(403);
+    const pending = (await call(adminToken, 'GET', `/api/trades?periodId=${p.id}&all=1`)).body.find((t: any) => t.id === offer.id);
+    expect(pending.canDecide).toBe(true);
+    expect(Array.isArray(pending.issues)).toBe(true);
+    expect((await call(adminToken, 'POST', `/api/trades/${offer.id}/approve`, {})).body.status).toBe('approved');
+    who = await owner();
+    expect(who.get(w1)).toBe(c);
+
+    // Swap: c swaps that weekend for someone else's, who declines then accepts a new proposal.
+    const w2 = [...who.entries()].find(([id, u]) => id.includes(':weekend:') && id > 'general:weekend:2027-09' && u !== c)![0] as string;
+    const b = who.get(w2) as string;
+    const swap = (await call(tokenOf(c), 'POST', '/api/trades', { shiftId: w1, kind: 'swap', theirShiftId: w2 })).body;
+    expect(swap).toMatchObject({ status: 'proposed', to: { id: b } });
+    expect((await call(tokenOf(b), 'POST', `/api/trades/${swap.id}/decline`, {})).body.status).toBe('declined');
+    const swap2 = (await call(tokenOf(c), 'POST', '/api/trades', { shiftId: w1, kind: 'swap', theirShiftId: w2, note: 'Please?' })).body;
+    expect((await call(tokenOf(a), 'POST', `/api/trades/${swap2.id}/accept`, {})).status).toBe(409); // not theirs to accept
+    expect((await call(tokenOf(b), 'POST', `/api/trades/${swap2.id}/accept`, {})).body.status).toBe('accepted');
+    expect((await call(adminToken, 'POST', `/api/trades/${swap2.id}/approve`, {})).body.status).toBe('approved');
+    who = await owner();
+    expect([who.get(w1), who.get(w2)]).toEqual([b, c]);
+  }, 30_000);
+});
+
 describe('full scheduling workflow', () => {
   it('collects requests, optimizes, edits, publishes and shares the schedule', async () => {
     const created = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2, holidays: ['2027-09-06'] });

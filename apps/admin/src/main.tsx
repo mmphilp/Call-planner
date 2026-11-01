@@ -28,7 +28,7 @@ function App() {
   if (checking) return null;
   if (!user) return <Login onSignedIn={setUser} />;
   const isSuper = user.role === 'admin';
-  if (!isSuper && !user.adminServiceIds.length) {
+  if (!isSuper && !user.adminServiceIds.length && user.role !== 'viewer') {
     return (
       <div className="login">
         <div className="card">
@@ -50,14 +50,14 @@ function App() {
             Call Planner
           </div>
           <NavLink to="/periods">Schedules</NavLink>
-          <NavLink to="/routine">Weekday call</NavLink>
+          {user.role !== 'viewer' && <NavLink to="/routine">Weekday call</NavLink>}
           <NavLink to="/holidays">Holidays</NavLink>
           {isSuper && <NavLink to="/people">Surgeons</NavLink>}
           {isSuper && <NavLink to="/services">Services</NavLink>}
           <div className="spacer" />
           <span className="muted small" style={{ padding: '0 10px' }}>
             {user.name}
-            {!isSuper && <><br />Team admin</>}
+            {!isSuper && <><br />{user.role === 'viewer' ? 'View only' : 'Team admin'}</>}
           </span>
           <button className="link" style={{ textAlign: 'left' }} onClick={() => (auth.set(null), setUser(null))}>
             Sign out

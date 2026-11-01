@@ -9,7 +9,7 @@ import type {
   Violation,
 } from '@call-planner/core';
 
-export type Role = 'admin' | 'surgeon';
+export type Role = 'admin' | 'surgeon' | 'viewer';
 export type PeriodStatus = 'draft' | 'open' | 'closed' | 'published';
 
 export interface User {
@@ -60,6 +60,36 @@ export interface Schedule {
   /** source 'backup': filled automatically by the team's covering service. */
   assignments: (Assignment & { source?: 'backup' })[];
   people: { id: string; name: string }[];
+}
+
+export interface TradeShift {
+  id: string;
+  serviceId: string;
+  serviceName: string;
+  kind: 'day' | 'night' | 'weekend';
+  date: string;
+  start: string;
+  end: string;
+}
+
+/** A shift offer or swap between surgeons. */
+export interface Trade {
+  id: string;
+  periodId: string;
+  kind: 'offer' | 'swap';
+  status: 'open' | 'proposed' | 'accepted' | 'approved' | 'declined' | 'cancelled' | 'rejected';
+  note: string;
+  adminNote: string;
+  createdAt: string;
+  decidedAt: string | null;
+  shift?: TradeShift;
+  theirShift?: TradeShift;
+  from: { id: string; name: string };
+  to: { id: string; name: string } | null;
+  /** The signed-in admin may approve or reject it. */
+  canDecide: boolean;
+  /** Rule problems approving would add. */
+  issues: string[];
 }
 
 export interface Report {

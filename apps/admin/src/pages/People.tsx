@@ -79,7 +79,7 @@ export function PeoplePage({ currentUserId }: { currentUserId: string }) {
                 <td className="small">{u.takesCall ? u.serviceIds.map((s) => serviceName.get(s) ?? s).join(', ') || <span className="badge warn">None</span> : <span className="muted">No call</span>}</td>
                 <td className="num">{u.takesCall ? `${Math.round(u.fte * 100)}%` : '—'}</td>
                 <td>
-                  {u.role === 'admin' ? 'Admin' : 'Surgeon'}
+                  {u.role === 'admin' ? 'Admin' : u.role === 'viewer' ? 'Viewer (read-only)' : 'Surgeon'}
                   {u.role !== 'admin' && u.adminServiceIds.length > 0 && (
                     <div className="small muted">Team admin: {u.adminServiceIds.map((s) => serviceName.get(s) ?? s).join(', ')}</div>
                   )}
@@ -110,6 +110,7 @@ export function PeoplePage({ currentUserId }: { currentUserId: string }) {
                 <select value={draft.role} disabled={draft.id === currentUserId} onChange={(e) => setDraft({ ...draft, role: e.target.value as User['role'] })}>
                   <option value="surgeon">Surgeon (mobile app)</option>
                   <option value="admin">Admin (this console + app)</option>
+                  <option value="viewer">Viewer (read-only console, e.g. an assistant)</option>
                 </select>
               </label>
               <label className="field">

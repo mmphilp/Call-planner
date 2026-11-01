@@ -10,7 +10,8 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'surgeon';
+  role: 'admin' | 'surgeon' | 'viewer';
+  takesCall: boolean;
   phone: string | null;
   serviceIds: string[];
   calendarPath?: string;
@@ -29,6 +30,8 @@ export interface Period {
 
 export interface MyShift {
   id: string;
+  periodId: string;
+  serviceId: string;
   serviceName: string;
   color?: string;
   kind: ShiftKind;
@@ -57,6 +60,30 @@ export interface Schedule {
   shifts: Shift[];
   assignments: { shiftId: string; userId: string }[];
   people: { id: string; name: string; phone: string | null }[];
+}
+
+export interface TradeShift {
+  id: string;
+  serviceId: string;
+  serviceName: string;
+  kind: ShiftKind;
+  date: string;
+  start: string;
+  end: string;
+}
+
+/** A shift a surgeon offered up, or a proposed swap between two surgeons. */
+export interface Trade {
+  id: string;
+  periodId: string;
+  kind: 'offer' | 'swap';
+  status: 'open' | 'proposed' | 'accepted' | 'approved' | 'declined' | 'cancelled' | 'rejected';
+  note: string;
+  adminNote: string;
+  shift?: TradeShift;
+  theirShift?: TradeShift;
+  from: { id: string; name: string };
+  to: { id: string; name: string } | null;
 }
 
 export interface CallRequest {

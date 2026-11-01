@@ -19,8 +19,8 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { transaction, type Db } from '../db';
 import { calendarHolidays, defaultHolidays, nameShifts, normalizeHolidays } from '../holidays';
-import { regenerate as syncRegenerate, refreshCover as syncRefreshCover, shiftsOutOfDate } from '../sync';
-import { canEditShift, dateStr, httpError, isScheduler, me, parse, requireAdmin, requireScheduler } from '../http';
+import { evaluatePeriod, regenerate as syncRegenerate, refreshCover as syncRefreshCover, shiftsOutOfDate } from '../sync';
+import { canEditShift, canView, dateStr, httpError, me, parse, requireAdmin, requireScheduler, requireViewer } from '../http';
 import {
   callPool,
   getPeriod,
@@ -92,7 +92,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
   /** Load a period the current user is allowed to see. */
   const visiblePeriod = (req: FastifyRequest, id: string): Period => {
     const p = getPeriod(db, id);
-    if (!p || (p.status === 'draft' && !isScheduler(me(req)))) throw httpError(404, 'Schedule period not found');
+    if (!p || (p.status === 'draft' && !canView(me(req)))) throw httpError(404, 'Schedule period not found');
     return p;
   };
 
@@ -148,7 +148,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
   };
 
   app.get('/api/holidays/history', async (req) => {
-    requireScheduler(req);
+    requireViewer(req);
     return holidayCoverage().sort((a, b) => a.date.localeCompare(b.date));
   });
 
@@ -156,7 +156,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
 
   app.get('/api/periods', async (req) => {
     const all = listPeriods(db);
-    return isScheduler(me(req)) ? all : all.filter((p) => p.status !== 'draft');
+    return canView(me(req)) ? all : all.filter((p) => p.status !== 'draft');
   });
 
   app.post('/api/periods', async (req, reply) => {
@@ -237,7 +237,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
 
   app.get<{ Params: { id: string } }>('/api/periods/:id/schedule', async (req) => {
     const p = visiblePeriod(req, req.params.id);
-    const isAdmin = isScheduler(me(req));
+    const isAdmin = canView(me(req));
     const people = listUsers(db).map((u) => ({ id: u.id, name: u.name, phone: u.phone }));
     return {
       period: p,
@@ -251,18 +251,10 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
     };
   });
 
-  const report = (p: Period) =>
-    evaluateSchedule({
-      backups: backupMap(listServices(db)),
-      shifts: applyTeamRules(poolShifts(db, p.id), listServices(db)),
-      surgeons: callPool(db),
-      requests: listRequests(db, { periodId: p.id }),
-      rules: p.rules,
-      assignments: listAssignments(db, p.id),
-    });
+  const report = (p: Period) => evaluatePeriod(db, p);
 
   app.get<{ Params: { id: string } }>('/api/periods/:id/report', async (req) => {
-    requireScheduler(req);
+    requireViewer(req);
     return report(visiblePeriod(req, req.params.id));
   });
 
@@ -432,7 +424,7 @@ export function periodRoutes(app: FastifyInstance, db: Db) {
   });
 
   app.get<{ Params: { id: string } }>('/api/periods/:id/export.csv', async (req, reply) => {
-    requireScheduler(req);
+    requireViewer(req);
     const p = visiblePeriod(req, req.params.id);
     const services = new Map(listServices(db).map((s) => [s.id, s.name]));
     const names = new Map(listUsers(db).map((u) => [u.id, u.name]));

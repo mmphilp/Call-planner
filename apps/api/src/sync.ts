@@ -1,6 +1,6 @@
-import { coverFromBackup, generateShifts } from '@call-planner/core';
+import { applyTeamRules, backupMap, coverFromBackup, evaluateSchedule, generateShifts, type Assignment } from '@call-planner/core';
 import { transaction, type Db } from './db';
-import { listAssignments, listPeriods, listServices, listShifts, poolShifts, type Period } from './repo';
+import { callPool, listAssignments, listPeriods, listRequests, listServices, listShifts, poolShifts, type Period } from './repo';
 
 function expectedShifts(db: Db, p: Period) {
   return generateShifts({ start: p.startDate, end: p.endDate, services: listServices(db), holidays: p.holidays.map((h) => h.date) });
@@ -59,4 +59,17 @@ export function refreshCover(db: Db, periodId: string) {
  */
 export function syncUnpublished(db: Db) {
   for (const p of listPeriods(db)) if (p.status !== 'published') regenerate(db, p);
+}
+
+/** Rule check, fairness and request outcomes for a period (optionally with different assignments). */
+export function evaluatePeriod(db: Db, p: Period, assignments: Assignment[] = listAssignments(db, p.id)) {
+  const services = listServices(db);
+  return evaluateSchedule({
+    backups: backupMap(services),
+    shifts: applyTeamRules(poolShifts(db, p.id), services),
+    surgeons: callPool(db),
+    requests: listRequests(db, { periodId: p.id }),
+    rules: p.rules,
+    assignments,
+  });
 }

@@ -12,6 +12,7 @@ import { peopleRoutes } from './routes/people';
 import { periodRoutes } from './routes/periods';
 import { requestRoutes } from './routes/requests';
 import { routineRoutes } from './routes/routine';
+import { tradeRoutes } from './routes/trades';
 
 declare module 'fastify' {
   interface FastifyContextConfig {
@@ -68,6 +69,7 @@ export async function buildApp(opts: AppOptions) {
   periodRoutes(app, db);
   requestRoutes(app, db);
   routineRoutes(app, db);
+  tradeRoutes(app, db);
   calendarRoutes(app, db);
 
   const hasBuild = (dir?: string): dir is string => !!dir && existsSync(resolve(dir, 'index.html'));

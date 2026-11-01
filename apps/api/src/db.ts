@@ -2,22 +2,25 @@ import { DatabaseSync } from 'node:sqlite';
 
 export type Db = DatabaseSync;
 
-const SCHEMA = `
-PRAGMA foreign_keys = ON;
-PRAGMA journal_mode = WAL;
-
-CREATE TABLE IF NOT EXISTS users (
+// Kept separate so the migration below can rebuild the table with it.
+const USER_COLUMNS = `
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE COLLATE NOCASE,
   name TEXT NOT NULL,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('admin', 'surgeon')),
+  role TEXT NOT NULL CHECK (role IN ('admin', 'surgeon', 'viewer')),
   fte REAL NOT NULL DEFAULT 1,
   active INTEGER NOT NULL DEFAULT 1,
   takes_call INTEGER NOT NULL DEFAULT 1,
   phone TEXT,
   calendar_token TEXT NOT NULL UNIQUE
-);
+);`;
+
+const SCHEMA = `
+PRAGMA foreign_keys = ON;
+PRAGMA journal_mode = WAL;
+
+CREATE TABLE IF NOT EXISTS users (${USER_COLUMNS}
 
 CREATE TABLE IF NOT EXISTS services (
   id TEXT PRIMARY KEY,
@@ -94,6 +97,26 @@ CREATE TABLE IF NOT EXISTS assignments (
 );
 CREATE INDEX IF NOT EXISTS assignments_user ON assignments(user_id);
 
+-- Shift swaps and giveaways on published schedules.
+-- offer: from_user gives shift_id away (open → accepted when someone takes it).
+-- swap:  from_user's shift_id for to_user's their_shift_id (proposed → accepted).
+-- Accepted trades wait for an admin to approve (applied) or reject.
+CREATE TABLE IF NOT EXISTS trades (
+  id TEXT PRIMARY KEY,
+  period_id TEXT NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('offer', 'swap')),
+  shift_id TEXT NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,
+  from_user TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  to_user TEXT REFERENCES users(id) ON DELETE CASCADE,
+  their_shift_id TEXT REFERENCES shifts(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('open', 'proposed', 'accepted', 'approved', 'declined', 'cancelled', 'rejected')),
+  note TEXT NOT NULL DEFAULT '',
+  admin_note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  decided_at TEXT
+);
+CREATE INDEX IF NOT EXISTS trades_period ON trades(period_id, status);
+
 CREATE TABLE IF NOT EXISTS requests (
   id TEXT PRIMARY KEY,
   period_id TEXT NOT NULL REFERENCES periods(id) ON DELETE CASCADE,
@@ -120,6 +143,21 @@ export function openDb(path: string): Db {
 
 /** Bring databases created by older versions up to the current schema. */
 function migrate(db: Db) {
+  // The 'viewer' role was added later; SQLite can't change a CHECK in place, so rebuild users.
+  const usersSql = (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get() as { sql: string }).sql;
+  if (!usersSql.includes("'viewer'")) {
+    db.exec('PRAGMA foreign_keys = OFF');
+    transaction(db, () => {
+      db.exec(`CREATE TABLE users_new (${USER_COLUMNS}`);
+      db.exec(
+        `INSERT INTO users_new (id, email, name, password_hash, role, fte, active, takes_call, phone, calendar_token)
+         SELECT id, email, name, password_hash, role, fte, active, takes_call, phone, calendar_token FROM users`,
+      );
+      db.exec('DROP TABLE users');
+      db.exec('ALTER TABLE users_new RENAME TO users');
+    });
+    db.exec('PRAGMA foreign_keys = ON');
+  }
   const shiftCols = (db.prepare('PRAGMA table_info(shifts)').all() as { name: string }[]).map((c) => c.name);
   if (!shiftCols.includes('covered_by')) db.exec('ALTER TABLE shifts ADD COLUMN covered_by TEXT');
   const serviceCols = (db.prepare('PRAGMA table_info(services)').all() as { name: string }[]).map((c) => c.name);

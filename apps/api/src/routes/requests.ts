@@ -3,7 +3,7 @@ import { addDays } from '@call-planner/core';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Db } from '../db';
-import { dateStr, httpError, isScheduler, me, parse, requireAdmin } from '../http';
+import { canView, dateStr, httpError, me, parse, requireAdmin } from '../http';
 import { getPeriod, getRequest, listRequests } from '../repo';
 
 const requestBody = z
@@ -36,13 +36,14 @@ export function requestRoutes(app: FastifyInstance, db: Db) {
     const user = me(req);
     // Your own requests by default (the app); schedulers, including team
     // admins (read-only), can ask for everyone's with ?all=1.
-    const everyone = q.all === '1' && isScheduler(user);
+    const everyone = q.all === '1' && canView(user);
     return listRequests(db, { periodId: q.periodId, userId: everyone ? undefined : user.id });
   });
 
   app.post('/api/requests', async (req, reply) => {
     const user = me(req);
     const isAdmin = user.role === 'admin';
+    if (user.role === 'viewer') throw httpError(403, 'View-only accounts can’t send requests');
     const body = parse(requestBody, req.body);
     const p = assertOpenFor(body.periodId, isAdmin);
     // Allow a request to run into the first weekend of the next period.

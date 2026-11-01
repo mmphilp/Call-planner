@@ -1,4 +1,5 @@
-import { View } from 'react-native';
+import { router } from 'expo-router';
+import { Pressable, View } from 'react-native';
 import { Badge, Card, Empty, ErrorText, Screen, SectionHeader, T, useApi } from '@/components/ui';
 import { api, type MyShift } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -63,7 +64,13 @@ export default function MyCallScreen() {
 
 function ShiftRow({ shift }: { shift: MyShift }) {
   const t = useTheme();
+  // Tap a shift to offer it up or propose a swap.
   return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityHint="Swap or give away this shift"
+      onPress={() => router.push({ pathname: '/trade', params: { shiftId: shift.id, periodId: shift.periodId } })}
+    >
     <Card style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
       <View style={{ width: 4, alignSelf: 'stretch', borderRadius: 2, backgroundColor: shift.color ?? t.accent }} />
       <View style={{ flex: 1, gap: 2 }}>
@@ -76,6 +83,8 @@ function ShiftRow({ shift }: { shift: MyShift }) {
         </T>
       </View>
       {shift.holiday && <Badge label={shift.holidayName ?? 'Holiday'} tone="warn" />}
+      <T muted size={18}>›</T>
     </Card>
+    </Pressable>
   );
 }

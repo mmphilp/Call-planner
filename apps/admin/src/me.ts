@@ -11,6 +11,8 @@ export function useMe() {
   return {
     me,
     isSuper,
+    /** View-only account (e.g. an assistant): sees everything, changes nothing. */
+    isViewer: me.role === 'viewer',
     /** Team admins manage weekday call for their own services; weekends stay with the overall admin. */
     canEditShift: (s: { serviceId: string; kind: string }) =>
       isSuper || (s.kind !== 'weekend' && me.adminServiceIds.includes(s.serviceId)),

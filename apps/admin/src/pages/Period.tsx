@@ -1,22 +1,24 @@
 import { longDate, longDateRange, mergeRules, standardHolidays, type Rules } from '@call-planner/core';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { del, get, patch, post, type Period, type Report, type RequestRow, type Schedule, type User } from '../api';
+import { del, get, patch, post, type Period, type Report, type RequestRow, type Schedule, type User, type Trade } from '../api';
 import { useMe } from '../me';
 import { useLoad } from '../useLoad';
 import { FairnessTab } from './FairnessTab';
 import { STATUS_LABEL } from './Periods';
 import { RequestsTab } from './RequestsTab';
 import { ScheduleTab } from './ScheduleTab';
+import { SwapsTab } from './SwapsTab';
 
 export interface PeriodData {
   schedule: Schedule;
   requests: RequestRow[];
   report: Report;
   users: User[];
+  trades: Trade[];
 }
 
-type Tab = 'overview' | 'requests' | 'schedule' | 'fairness' | 'rules';
+type Tab = 'overview' | 'requests' | 'schedule' | 'swaps' | 'fairness' | 'rules';
 
 export function PeriodPage() {
   const { id } = useParams();
@@ -24,13 +26,14 @@ export function PeriodPage() {
   const [tab, setTab] = useState<Tab>(isSuper ? 'overview' : 'schedule');
   const { data, error, reload } = useLoad<PeriodData>(
     async () => {
-      const [schedule, requests, report, users] = await Promise.all([
+      const [schedule, requests, report, users, trades] = await Promise.all([
         get<Schedule>(`/api/periods/${id}/schedule`),
         get<RequestRow[]>(`/api/requests?periodId=${id}&all=1`),
         get<Report>(`/api/periods/${id}/report`),
         get<User[]>('/api/users'),
+        get<Trade[]>(`/api/trades?periodId=${id}&all=1`),
       ]);
-      return { schedule, requests, report, users };
+      return { schedule, requests, report, users, trades };
     },
     [id],
   );
@@ -39,6 +42,7 @@ export function PeriodPage() {
   if (!data) return <div className="muted">Loading…</div>;
   const p = data.schedule.period;
   const pending = data.requests.filter((r) => r.status === 'pending').length;
+  const swapsWaiting = data.trades.filter((t) => t.status === 'accepted' && t.canDecide).length;
 
   return (
     <>
@@ -62,12 +66,13 @@ export function PeriodPage() {
             ['overview', 'Overview'],
             ['requests', `Requests${pending ? ` (${pending})` : ''}`],
             ['schedule', 'Schedule'],
+            ['swaps', `Swaps${swapsWaiting ? ` (${swapsWaiting})` : ''}`],
             ['fairness', 'Fairness'],
             ['rules', 'Rules'],
           ] as [Tab, string][]
         )
           // Team admins work on their weekday schedule; period setup stays with the overall admin.
-          .filter(([t]) => isSuper || t === 'requests' || t === 'schedule' || t === 'fairness')
+          .filter(([t]) => isSuper || t === 'requests' || t === 'schedule' || t === 'swaps' || t === 'fairness')
           .map(([t, label]) => (
           <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
             {label}
@@ -77,6 +82,7 @@ export function PeriodPage() {
       {tab === 'overview' && <Overview data={data} reload={reload} goTo={setTab} />}
       {tab === 'requests' && <RequestsTab data={data} reload={reload} />}
       {tab === 'schedule' && <ScheduleTab data={data} reload={reload} />}
+      {tab === 'swaps' && <SwapsTab data={data} reload={reload} />}
       {tab === 'fairness' && <FairnessTab data={data} />}
       {tab === 'rules' && <RulesTab period={p} reload={reload} />}
     </>

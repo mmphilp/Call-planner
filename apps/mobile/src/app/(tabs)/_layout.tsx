@@ -27,7 +27,8 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Schedule</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="person.3" md="groups" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="requests">
+      {/* View-only accounts (e.g. an assistant) don't send requests or trade shifts. */}
+      <NativeTabs.Trigger name="requests" hidden={user.role === 'viewer'}>
         <NativeTabs.Trigger.Label>Requests</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="tray.and.arrow.up" md="outbox" />
       </NativeTabs.Trigger>

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Db } from '../db';
-import { canEditService, httpError, me, parse, requireScheduler } from '../http';
+import { canEditService, httpError, me, parse, requireScheduler, requireViewer } from '../http';
 import { listPeriods, listRoutine, toService } from '../repo';
 import { refreshCover } from '../sync';
 
@@ -11,7 +11,7 @@ import { refreshCover } from '../sync';
  */
 export function routineRoutes(app: FastifyInstance, db: Db) {
   app.get('/api/routine', async (req) => {
-    requireScheduler(req);
+    requireViewer(req);
     return listRoutine(db);
   });
 

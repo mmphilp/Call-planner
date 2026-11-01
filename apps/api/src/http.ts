@@ -56,3 +56,13 @@ export function canEditShift(user: User, shift: { serviceId: string; kind: strin
 export function canEditService(user: User, serviceId: string): boolean {
   return user.role === 'admin' || user.adminServiceIds.includes(serviceId);
 }
+
+/** Anyone who can see everything read-only: admins, team admins and viewers (e.g. an assistant). */
+export function canView(user: User): boolean {
+  return isScheduler(user) || user.role === 'viewer';
+}
+
+export function requireViewer(req: FastifyRequest): User {
+  if (!canView(req.currentUser)) throw httpError(403, 'Not allowed');
+  return req.currentUser;
+}
