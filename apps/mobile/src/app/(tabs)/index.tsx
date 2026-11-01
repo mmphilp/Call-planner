@@ -18,15 +18,15 @@ export default function MyCallScreen() {
   const { user } = useAuth();
   const t = useTheme();
   const thisMonth = todayStr().slice(0, 7);
-  // From the start of this month, so the calendar shows earlier shifts this month too.
+  // All your shifts, past and future, so the calendar and Past list can go back in time.
   const { data, error, refreshing, refresh } = useApi(async () => {
     const [shifts, periods] = await Promise.all([
-      api<MyShift[]>('GET', `/api/me/shifts?from=${thisMonth}-01`),
+      api<MyShift[]>('GET', '/api/me/shifts'),
       api<Period[]>('GET', '/api/periods'),
     ]);
     return { shifts, periods };
   });
-  const [mode, setMode] = useState<'list' | 'calendar'>('list');
+  const [mode, setMode] = useState<'list' | 'past' | 'calendar'>('list');
   const [month, setMonth] = useState(thisMonth);
   const [day, setDay] = useState<string | null>(todayStr());
   const holidays = useMemo(() => holidayMap(data?.periods.flatMap((p) => p.calendarHolidays ?? [])), [data]);
@@ -35,7 +35,13 @@ export default function MyCallScreen() {
 
   const all = data?.shifts ?? [];
   const shifts = all.filter((s) => s.end >= todayStr());
-  const lastMonth = [...all.map((s) => s.end.slice(0, 7)), thisMonth].sort().at(-1)!;
+  // Past shifts, most recent first, by month.
+  const past = all.filter((s) => s.end < todayStr()).reverse();
+  const pastByMonth = new Map<string, MyShift[]>();
+  for (const s of past) pastByMonth.set(monthLabel(s.date), [...(pastByMonth.get(monthLabel(s.date)) ?? []), s]);
+  const months = [...all.flatMap((s) => [s.start.slice(0, 7), s.end.slice(0, 7)]), thisMonth].sort();
+  const firstMonth = months[0];
+  const lastMonth = months.at(-1)!;
   const [next, ...rest] = shifts;
   const byMonth = new Map<string, MyShift[]>();
   for (const s of rest) {
@@ -62,20 +68,21 @@ export default function MyCallScreen() {
           </T>
         </Card>
       )}
-      {data && !shifts.length && (
+      {data && mode === 'list' && !shifts.length && (
         <Empty title="No upcoming call" body="Your shifts appear here once the scheduler publishes the schedule." />
       )}
       {all.length > 0 && (
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <Chip label="List" selected={mode === 'list'} onPress={() => setMode('list')} />
+          <Chip label="Upcoming" selected={mode === 'list'} onPress={() => setMode('list')} />
+          <Chip label="Past" selected={mode === 'past'} onPress={() => setMode('past')} />
           <Chip label="Calendar" selected={mode === 'calendar'} onPress={() => setMode('calendar')} />
         </View>
       )}
       {mode === 'calendar' && all.length > 0 && (
         <>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Pressable onPress={() => setMonth(shiftMonth(month, -1))} hitSlop={12} disabled={month <= thisMonth}>
-              <T bold style={{ color: t.accent, opacity: month <= thisMonth ? 0.3 : 1 }}>‹ Prev</T>
+            <Pressable onPress={() => setMonth(shiftMonth(month, -1))} hitSlop={12} disabled={month <= firstMonth}>
+              <T bold style={{ color: t.accent, opacity: month <= firstMonth ? 0.3 : 1 }}>‹ Prev</T>
             </Pressable>
             <T bold>{monthLabel(`${month}-01`)}</T>
             <Pressable onPress={() => setMonth(shiftMonth(month, 1))} hitSlop={12} disabled={month >= lastMonth}>
@@ -135,6 +142,22 @@ export default function MyCallScreen() {
           ))}
         </View>
       ))}
+      {mode === 'past' && !past.length && <Empty title="No past call yet" body="Shifts you’ve covered will show here." />}
+      {mode === 'past' && past.length > 0 && (
+        <T muted>
+          {past.length} past shift{past.length === 1 ? '' : 's'}, including {past.filter((s) => s.kind === 'weekend').length} weekend
+          {past.filter((s) => s.kind === 'weekend').length === 1 ? '' : 's'}
+        </T>
+      )}
+      {mode === 'past' &&
+        [...pastByMonth].map(([label, items]) => (
+          <View key={label} style={{ gap: 8 }}>
+            <SectionHeader>{label}</SectionHeader>
+            {items.map((s) => (
+              <ShiftRow key={s.id} shift={s} />
+            ))}
+          </View>
+        ))}
     </Screen>
   );
 }
