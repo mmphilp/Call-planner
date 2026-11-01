@@ -198,7 +198,7 @@ export default function ScheduleScreen() {
           />
           <View style={{ flexDirection: 'row', gap: 14, justifyContent: 'center' }}>
             <T muted size={12}><T size={12} style={{ color: t.accent }}>●</T> You’re on call</T>
-            {open.size > 0 && <T muted size={12}><T size={12} style={{ color: t.bad }}>●</T> Uncovered</T>}
+            {open.size > 0 && <T muted size={12}><T size={12} style={{ color: t.warn }}>○</T> Shift not filled yet</T>}
             {[...holidays.keys()].some((d) => d.startsWith(month)) && (
               <T muted size={12}><T size={12} style={{ color: t.warn }}>★</T> Holiday</T>
             )}
@@ -283,8 +283,8 @@ function ShiftLine({
           {label}
           {sub ? ` · ${sub}` : ''}
         </T>
-        <T bold style={me ? { color: t.accent } : undefined}>
-          {locum ? `${locum} (locum)` : person ? person.name : 'Unassigned'}
+        <T bold style={me ? { color: t.accent } : !locum && !person ? { color: t.warn } : undefined}>
+          {locum ? `${locum} (locum)` : person ? person.name : 'Not filled yet'}
           {me ? ' (you)' : ''}
         </T>
       </View>

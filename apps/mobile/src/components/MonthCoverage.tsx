@@ -3,8 +3,9 @@ import { addDays, dayOfWeek } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
 
 /**
- * Month grid for the group schedule: a dot marks days you're on call, a red
- * dot marks days with an uncovered shift. Tap a day to see who's on.
+ * Month grid for the group schedule: a filled dot marks days you're on call,
+ * an amber ring marks days with a shift nobody is assigned to yet. Tap a day
+ * to see who's on.
  */
 export function MonthCoverage({
   month,
@@ -66,7 +67,7 @@ export function MonthCoverage({
                 <View style={styles.dots}>
                   {holidays?.has(d) && <Text style={{ fontSize: 8, lineHeight: 8, color: t.warn }}>★</Text>}
                   {mine.has(d) && <View style={[styles.dot, { backgroundColor: t.accent }]} />}
-                  {open.has(d) && <View style={[styles.dot, { backgroundColor: t.bad }]} />}
+                  {open.has(d) && <View style={[styles.dot, styles.ring, { borderColor: t.warn }]} />}
                 </View>
               </Pressable>
             );
@@ -84,5 +85,6 @@ const styles = StyleSheet.create({
   dow: { height: 22, lineHeight: 22, fontSize: 12 },
   num: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   dots: { flexDirection: 'row', gap: 3, height: 6, marginTop: 2 },
-  dot: { width: 6, height: 6, borderRadius: 3 },
+  dot: { width: 7, height: 7, borderRadius: 3.5 },
+  ring: { borderWidth: 1.5, backgroundColor: 'transparent' },
 });
