@@ -10,3 +10,5 @@ apps/mobile/android/
 *.db-shm
 # Your own compose additions (e.g. a cloudflared tunnel), merged automatically by docker compose
 docker-compose.override.yml
+# Daily database backups (see docker-compose.yml)
+backups/

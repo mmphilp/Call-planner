@@ -126,6 +126,7 @@ On any Linux box with Docker and Docker Compose (a homelab server, NAS or VM):
 git clone https://github.com/mmphilp/Call-planner.git
 cd Call-planner
 cp .env.example .env
+mkdir -p backups && sudo chown 1000:1000 backups   # where daily database backups go
 nano .env            # set JWT_SECRET (openssl rand -base64 48), ADMIN_EMAIL, ADMIN_PASSWORD, SUPPORT_EMAIL
 docker compose up -d --build
 ```
@@ -175,20 +176,13 @@ The database lives in the `call-planner-data` Docker volume, so it survives upda
 * **Every day, automatically**, to `/data/backups` inside the container (`call-planner-2026-11-02.db`, …), keeping the newest 14. Change that with `BACKUP_KEEP=30` in `.env` (`0` turns it off). Backups are taken while the app runs; nothing stops.
 * **Any time**, from the admin console: **Download backup** in the sidebar saves a full copy to your computer.
 
-Those daily backups are on the same server, so also **copy them somewhere else** (a NAS, another machine, cloud storage). The simplest way is to have them land in a normal folder on the server, then include that folder in whatever already backs up your server. Add to `docker-compose.override.yml`:
-
-```yaml
-services:
-  call-planner:
-    volumes:
-      - ./backups:/data/backups
-```
-
-then `mkdir -p backups && sudo chown 1000:1000 backups && docker compose up -d`. The daily files now appear in `~/docker/Call-planner/backups`. Or copy them out by hand:
+The daily files land in the `backups` folder next to `docker-compose.yml` (e.g. `~/docker/Call-planner/backups`). Create it once, owned by the app's user, before starting:
 
 ```bash
-docker compose cp call-planner:/data/backups ./backups
+mkdir -p backups && sudo chown 1000:1000 backups
 ```
+
+They're still on the same server, so also **copy that folder somewhere else** (a NAS, another machine, cloud storage), for example by adding it to whatever already backs up your server, or a nightly `rsync`.
 
 **Restoring** a backup (it's a complete database file):
 

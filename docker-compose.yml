@@ -8,6 +8,9 @@ services:
       - "4000:4000"
     volumes:
       - call-planner-data:/data
+      # Daily database backups land in ./backups next to this file, so they're
+      # easy to copy off the server. Create it once: mkdir -p backups && sudo chown 1000:1000 backups
+      - ./backups:/data/backups
     env_file: .env
 
 volumes:
