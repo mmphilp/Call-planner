@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2
+
+- **Automatic daily backups** of the database, made while the app runs, in `/data/backups` (next to the database), keeping the newest 14 (`BACKUP_KEEP`; `0` turns them off; `BACKUP_DIR` to put them elsewhere).
+- **Download backup** in the admin console sidebar (overall admin): a full copy of the database to keep somewhere safe.
+- README: backing up off the server, and restoring.
+
 ## 1.0.1
 
 - **Password changes at first sign-in.** Accounts created in the console start with a temporary password: the person must choose their own the first time they sign in (app or console). The same applies when the admin resets someone's password.

@@ -13,6 +13,19 @@ import { MeContext } from './me';
 import { ServicesPage } from './pages/Services';
 import './styles.css';
 
+/** Download a full copy of the database (overall admin). */
+async function downloadBackup() {
+  const res = await fetch('/api/backup', { headers: { authorization: `Bearer ${auth.token}` } });
+  if (!res.ok) return alert('Could not make a backup.');
+  const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'call-planner-backup.db';
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(!!auth.token);
@@ -63,6 +76,11 @@ function App() {
           {/* The surgeon app lives at the site root and shares this sign-in. */}
           <a href="/">{user.takesCall ? 'My schedule' : 'Open the app'} ↗</a>
           <NavLink to="/password" className="small">Change password</NavLink>
+          {isSuper && (
+            <a href="/api/backup" className="small" onClick={(e) => (e.preventDefault(), downloadBackup())} title="A full copy of the database, to keep somewhere safe">
+              Download backup
+            </a>
+          )}
           <span className="muted small who" style={{ padding: '0 10px' }}>
             {user.name}
             {!isSuper && <><br />{user.role === 'viewer' ? 'View only' : 'Team admin'}</>}

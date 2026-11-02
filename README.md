@@ -161,19 +161,47 @@ Surgeons need to reach the server from their phones anywhere, and logins should 
 
 Wrong passwords are limited to 10 per account per 15 minutes, and 50 per network address. Successful sign-ins are never limited, so a whole hospital on one shared network is fine.
 
-### 3. Update, back up, view logs
+### 3. Update and view logs
 
 ```bash
 git pull && docker compose up -d --build        # update to the latest version
-
-docker compose stop                             # back up (takes a few seconds)
-docker compose cp call-planner:/data/call-planner.db ./backups/call-planner-$(date +%F).db
-docker compose start
-
 docker compose logs -f                          # logs
 ```
 
-The database lives in the `call-planner-data` Docker volume, so it survives updates and restarts. Back it up regularly, and keep a copy off the server.
+### 4. Backups
+
+The database lives in the `call-planner-data` Docker volume, so it survives updates and restarts, but not a failed disk. Call Planner backs itself up:
+
+* **Every day, automatically**, to `/data/backups` inside the container (`call-planner-2026-11-02.db`, …), keeping the newest 14. Change that with `BACKUP_KEEP=30` in `.env` (`0` turns it off). Backups are taken while the app runs; nothing stops.
+* **Any time**, from the admin console: **Download backup** in the sidebar saves a full copy to your computer.
+
+Those daily backups are on the same server, so also **copy them somewhere else** (a NAS, another machine, cloud storage). The simplest way is to have them land in a normal folder on the server, then include that folder in whatever already backs up your server. Add to `docker-compose.override.yml`:
+
+```yaml
+services:
+  call-planner:
+    volumes:
+      - ./backups:/data/backups
+```
+
+then `mkdir -p backups && sudo chown 1000:1000 backups && docker compose up -d`. The daily files now appear in `~/docker/Call-planner/backups`. Or copy them out by hand:
+
+```bash
+docker compose cp call-planner:/data/backups ./backups
+```
+
+**Restoring** a backup (it's a complete database file):
+
+```bash
+docker compose stop call-planner
+docker compose run --rm -v "$PWD/backups:/restore:ro" --entrypoint sh call-planner -c \
+  'cp /restore/call-planner-2026-11-02.db /data/call-planner.db && rm -f /data/call-planner.db-wal /data/call-planner.db-shm'
+docker compose start call-planner
+```
+
+(Put the backup you want in `./backups` first, and change the date to match its name.)
+
+Everyone stays signed in; the schedule is as it was when the backup was made.
 
 ### Native iPhone/Android apps (optional)
 

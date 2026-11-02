@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { buildApp } from '../src/app';
+import { dailyBackup } from '../src/backup';
 import { createUser } from '../src/routes/people';
 
 type App = Awaited<ReturnType<typeof buildApp>>['app'];
@@ -107,6 +111,34 @@ describe('password changes', () => {
     // …or one person, and clear it again.
     await call(adminToken, 'PATCH', `/api/users/${u.id}`, { mustChangePassword: false });
     expect((await call(token, 'GET', '/api/periods')).status).toBe(200);
+  });
+});
+
+describe('backups', () => {
+  it('lets the overall admin download a full copy of the database', async () => {
+    expect((await call(surgeonTokens[0], 'GET', '/api/backup')).status).toBe(403);
+    const res = await app.inject({ url: '/api/backup', headers: { authorization: `Bearer ${adminToken}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-disposition']).toMatch(/attachment; filename="call-planner-\d{4}-\d{2}-\d{2}\.db"/);
+    expect(res.rawPayload.subarray(0, 15).toString()).toBe('SQLite format 3');
+    // It's a working database with everyone in it.
+    const file = join(mkdtempSync(join(tmpdir(), 'cp-')), 'copy.db');
+    writeFileSync(file, res.rawPayload);
+    const { DatabaseSync } = await import('node:sqlite');
+    expect((new DatabaseSync(file).prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number }).n).toBe(9);
+  });
+
+  it('keeps one backup a day and only the newest ones', async () => {
+    const built = await buildApp({ jwtSecret: 'test' });
+    const dir = mkdtempSync(join(tmpdir(), 'cp-backups-'));
+    for (const d of ['2026-01-01', '2026-01-02', '2026-01-03']) writeFileSync(join(dir, `call-planner-${d}.db`), 'old');
+    writeFileSync(join(dir, 'notes.txt'), 'leave me');
+    expect(dailyBackup(built.db, dir, 2)).toMatch(/call-planner-\d{4}-\d{2}-\d{2}\.db$/);
+    expect(dailyBackup(built.db, dir, 2)).toBeNull(); // already done today
+    const left = readdirSync(dir).sort();
+    expect(left).toHaveLength(3);
+    expect(left).toContain('call-planner-2026-01-03.db');
+    expect(left).toContain('notes.txt');
   });
 });
 

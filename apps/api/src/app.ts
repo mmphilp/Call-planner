@@ -1,9 +1,12 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import fastifyStatic from '@fastify/static';
 import Fastify from 'fastify';
+import { backupTo } from './backup';
 import { openDb, type Db } from './db';
 import { HttpError } from './http';
 import { getUser } from './repo';
@@ -79,6 +82,22 @@ export async function buildApp(opts: AppOptions) {
   });
 
   app.get('/health', { config: { public: true } }, async () => ({ ok: true, version: VERSION }));
+
+  /** Download a backup of the whole database (overall admin only). */
+  app.get('/api/backup', async (req, reply) => {
+    if (req.currentUser.role !== 'admin') throw new HttpError(403, 'Admin access required');
+    const file = join(tmpdir(), `call-planner-backup-${randomUUID()}.db`);
+    try {
+      backupTo(db, file);
+      const data = readFileSync(file);
+      return reply
+        .header('content-type', 'application/vnd.sqlite3')
+        .header('content-disposition', `attachment; filename="call-planner-${new Date().toISOString().slice(0, 10)}.db"`)
+        .send(data);
+    } finally {
+      rmSync(file, { force: true });
+    }
+  });
   // Public details for the sign-in pages.
   app.get('/api/info', { config: { public: true } }, async () => ({ supportEmail: opts.supportEmail || null }));
   peopleRoutes(app, db);
