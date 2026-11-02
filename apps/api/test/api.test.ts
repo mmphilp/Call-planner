@@ -586,25 +586,54 @@ describe('per-service publishing and sign-offs', () => {
 });
 
 describe('viewer role and shift trades', () => {
-  it('lets a viewer see everything but change nothing', async () => {
+  it('gives a view-only account the app’s view, not the admin side, and lets it change nothing', async () => {
     const { body: assistant } = await call(adminToken, 'POST', '/api/users', { email: 'assistant@x.org', name: 'Assistant', role: 'viewer', takesCall: false, password: 'password123' });
     await call(adminToken, 'PATCH', `/api/users/${assistant.id}`, { mustChangePassword: false });
     const viewer = await login('assistant@x.org');
     const { body: p } = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2 });
     await call(adminToken, 'POST', `/api/periods/${p.id}/optimize`, { seed: 1, kinds: ['weekend'] });
 
-    // Drafts and assignments are visible…
-    expect((await call(viewer, 'GET', '/api/periods')).body.map((x: any) => x.id)).toContain(p.id);
-    expect((await call(viewer, 'GET', `/api/periods/${p.id}/schedule`)).body.assignments.length).toBeGreaterThan(0);
-    for (const url of [`/api/periods/${p.id}/report`, '/api/users', '/api/holidays/history', `/api/periods/${p.id}/export.csv`, `/api/requests?periodId=${p.id}&all=1`]) {
-      expect((await call(viewer, 'GET', url)).status).toBe(200);
+    // Drafts and admin data are hidden, as for a surgeon…
+    expect((await call(viewer, 'GET', '/api/periods')).body.map((x: any) => x.id)).not.toContain(p.id);
+    for (const url of [`/api/periods/${p.id}/report`, '/api/users', '/api/holidays/history', `/api/periods/${p.id}/export.csv`, `/api/periods/${p.id}/signoff`]) {
+      expect([403, 404]).toContain((await call(viewer, 'GET', url)).status);
     }
+    // …published schedules are visible…
+    await call(adminToken, 'PATCH', `/api/periods/${p.id}`, { status: 'published' });
+    expect((await call(viewer, 'GET', `/api/periods/${p.id}/schedule`)).body.assignments.length).toBeGreaterThan(0);
     // …but nothing can be changed.
     const shift = 'general:weekend:2027-07-09';
     expect((await call(viewer, 'PUT', `/api/periods/${p.id}/assignments/${shift}`, { userId: null })).status).toBe(403);
     expect((await call(viewer, 'POST', `/api/periods/${p.id}/optimize`, {})).status).toBe(403);
-    expect((await call(viewer, 'PATCH', `/api/periods/${p.id}`, { status: 'published' })).status).toBe(403);
+    expect((await call(viewer, 'PATCH', `/api/periods/${p.id}`, { status: 'closed' })).status).toBe(403);
     expect((await call(viewer, 'POST', '/api/requests', { periodId: p.id, type: 'unavailable', startDate: '2027-08-02', endDate: '2027-08-03' })).status).toBe(403);
+  });
+
+  it('deletes people, asking first if they still have shifts', async () => {
+    const users = (await call(adminToken, 'GET', '/api/users')).body;
+    const admin = users.find((u: any) => u.role === 'admin');
+    expect((await call(adminToken, 'DELETE', `/api/users/${admin.id}`)).status).toBe(400);
+    const { body: extra } = await call(adminToken, 'POST', '/api/users', { email: 'test@x.org', name: 'Test Person', password: 'password123' });
+    expect((await call(surgeonTokens[0], 'DELETE', `/api/users/${extra.id}`)).status).toBe(403);
+    expect((await call(adminToken, 'DELETE', `/api/users/${extra.id}`)).body).toMatchObject({ ok: true, openedShifts: 0 });
+    expect((await call(adminToken, 'GET', '/api/users')).body.some((u: any) => u.id === extra.id)).toBe(false);
+
+    // Someone on a published schedule: reported first, then removed with their shifts left open and logged.
+    const { body: p } = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2 });
+    await call(adminToken, 'POST', `/api/periods/${p.id}/optimize`, { seed: 1, kinds: ['weekend'] });
+    await call(adminToken, 'PATCH', `/api/periods/${p.id}`, { status: 'published' });
+    const s8 = users.find((u: any) => u.email === 's8@x.org');
+    const theirs = (await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`)).body.assignments.filter((a: any) => a.userId === s8.id);
+    expect(theirs.length).toBeGreaterThan(0);
+    const first = await call(adminToken, 'DELETE', `/api/users/${s8.id}`);
+    expect(first.status).toBe(409);
+    expect(first.body).toMatchObject({ shiftCount: theirs.length, publishedCount: theirs.length });
+    expect((await call(adminToken, 'DELETE', `/api/users/${s8.id}?force=1`)).body.openedShifts).toBe(theirs.length);
+    const after = (await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`)).body;
+    expect(after.assignments.some((a: any) => a.userId === s8.id)).toBe(false);
+    const log = (await call(adminToken, 'GET', `/api/periods/${p.id}/changes`)).body.filter((e: any) => e.action === 'shift');
+    expect(log).toHaveLength(theirs.length);
+    expect(log[0]).toMatchObject({ note: 'Surgeon 8 removed', to: { user: null } });
   });
 
   it('offers, swaps, and admin approval', async () => {

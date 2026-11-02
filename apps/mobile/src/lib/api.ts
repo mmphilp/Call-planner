@@ -21,8 +21,8 @@ export interface User {
   calendarPath?: string;
 }
 
-/** Who gets the Admin tab: the overall admin, team admins and view-only accounts. */
-export const hasAdminAccess = (u: User) => u.role !== 'surgeon' || (u.adminServiceIds?.length ?? 0) > 0;
+/** Who can use the admin console: the overall admin and team admins (view-only accounts use the app only). */
+export const hasAdminAccess = (u: User) => u.role === 'admin' || (u.adminServiceIds?.length ?? 0) > 0;
 
 export interface Period {
   id: string;

@@ -27,6 +27,10 @@ export function RoutinePage() {
   if (error) return <div className="alert error">{error}</div>;
   if (!data) return <div className="muted">Loading…</div>;
 
+  // When a service covers weekend blocks, nobody has Friday-night weekday call.
+  const weekendServices = data.services.filter((x) => x.coversWeekend);
+  const weekendCovered = weekendServices.length > 0;
+  const weekendName = weekendServices.length === 1 ? weekendServices[0].name : 'Weekend';
   const weekdayServices = data.services.filter(
     (s) => (s.coversWeekdayDay || s.coversWeekdayNight) && canEditService(s.id),
   );
@@ -143,9 +147,9 @@ export function RoutinePage() {
                     <td className="small muted" style={{ whiteSpace: 'nowrap' }}>{label}</td>
                     {WEEKDAYS.map((d, i) => {
                       const weekday = i + 1;
-                      // Friday night is part of the weekend block when this service covers weekends.
-                      if (kind === 'night' && weekday === 5 && s.coversWeekend) {
-                        return <td key={d} className="small muted">Weekend</td>;
+                      // Friday night is part of the weekend block (Specialty Coverage) whenever any service covers weekends.
+                      if (kind === 'night' && weekday === 5 && weekendCovered) {
+                        return <td key={d} className="small muted">{weekendName}</td>;
                       }
                       const value = current.get(`${s.id}|${kind}|${weekday}`) ?? '';
                       return (

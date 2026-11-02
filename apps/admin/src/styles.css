@@ -145,10 +145,13 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .bar { height: 6px; background: var(--surface-2); border-radius: 3px; position: relative; min-width: 80px; }
 .bar > span { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 3px; }
 
-dialog { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); padding: 20px; width: min(560px, 92vw); }
+dialog { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); padding: 20px; width: min(640px, 92vw); }
 dialog::backdrop { background: rgb(0 0 0 / 0.4); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .form-grid .full { grid-column: 1 / -1; }
+/* Let grid cells and fieldsets shrink to the dialog instead of pushing it wider. */
+.form-grid > *, .form-grid fieldset { min-width: 0; }
+.form-grid input, .form-grid select { max-width: 100%; }
 
 @media (max-width: 760px) {
   .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }

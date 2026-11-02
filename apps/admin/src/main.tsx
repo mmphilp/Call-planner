@@ -46,12 +46,16 @@ function App() {
     return <ChangePassword forced onDone={setUser} onSignOut={() => (auth.set(null), setUser(null))} />;
   }
   const isSuper = user.role === 'admin';
-  if (!isSuper && !user.adminServiceIds.length && user.role !== 'viewer') {
+  // The console is for the overall admin and team admins; everyone else uses the app.
+  if (!isSuper && !user.adminServiceIds.length) {
     return (
       <div className="login">
         <div className="card">
           <h2>Admins only</h2>
-          <p className="muted">Surgeons use the Call Planner mobile app to see their schedule and send requests.</p>
+          <p className="muted">
+            {user.role === 'viewer' ? 'View-only accounts' : 'Surgeons'} use the Call Planner app to see the schedule.{' '}
+            <a href="/">Open the app</a>
+          </p>
           <button onClick={() => (auth.set(null), setUser(null))}>Sign out</button>
         </div>
       </div>
@@ -83,7 +87,7 @@ function App() {
           )}
           <span className="muted small who" style={{ padding: '0 10px' }}>
             {user.name}
-            {!isSuper && <><br />{user.role === 'viewer' ? 'View only' : 'Team admin'}</>}
+            {!isSuper && <><br />Team admin</>}
           </span>
           <button className="link" style={{ textAlign: 'left' }} onClick={() => (auth.set(null), setUser(null))}>
             Sign out

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.3
+
+- **View-only accounts use the app only**: no admin console, and no access to drafts, requests, reports or the roster. They see published (and in-review) schedules in the app.
+- **Delete people** from the Surgeons page (Edit → Delete). If they're still on shifts it says how many and asks again; those shifts are left unfilled, and changes to published schedules are logged.
+- **Call share** is a number box (any %), not a fixed list.
+- **Weekday call page**: no Friday-night routine box when a service covers weekends (Friday night is part of the weekend block).
+
 ## 1.0.2
 
 - **Automatic daily backups** of the database, made while the app runs, in `/data/backups` (next to the database), keeping the newest 14 (`BACKUP_KEEP`; `0` turns them off; `BACKUP_DIR` to put them elsewhere).

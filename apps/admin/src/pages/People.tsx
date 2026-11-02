@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { get, patch, post, type Schedule, type User } from '../api';
+import { api, get, patch, post, type Schedule, type User } from '../api';
 import { useLoad } from '../useLoad';
 
 type Draft = Omit<User, 'id'> & { id?: string; password: string };
@@ -46,6 +46,26 @@ export function PeoplePage({ currentUserId }: { currentUserId: string }) {
     } catch (e) {
       setFormError((e as Error).message);
     }
+  };
+
+  /** Delete someone; if they're still on shifts, say how many and ask again. */
+  const remove = async (d: Draft) => {
+    if (!d.id || !confirm(`Delete ${d.name}? This can’t be undone. (To keep their history, untick Active instead.)`)) return;
+    setFormError(null);
+    try {
+      await api('DELETE', `/api/users/${d.id}`);
+    } catch (e) {
+      const msg = (e as Error).message;
+      if (!/ is on \d+ shift/.test(msg)) return setFormError(msg);
+      if (!confirm(`${msg} in schedules. Deleting leaves those shifts unfilled (changes to published schedules are logged). Delete anyway?`)) return;
+      try {
+        await api('DELETE', `/api/users/${d.id}?force=1`);
+      } catch (e2) {
+        return setFormError((e2 as Error).message);
+      }
+    }
+    dialog.current?.close();
+    reload();
   };
 
   const serviceName = new Map(data?.services.map((s) => [s.id, s.name]));
@@ -96,7 +116,7 @@ export function PeoplePage({ currentUserId }: { currentUserId: string }) {
                 <td className="small">{u.takesCall ? u.serviceIds.map((s) => serviceName.get(s) ?? s).join(', ') || <span className="badge warn">None</span> : <span className="muted">No call</span>}</td>
                 <td className="num">{u.takesCall ? `${Math.round(u.fte * 100)}%` : '—'}</td>
                 <td>
-                  {u.role === 'admin' ? 'Admin' : u.role === 'viewer' ? 'Viewer (read-only)' : 'Surgeon'}
+                  {u.role === 'admin' ? 'Admin' : u.role === 'viewer' ? 'Viewer (app, view only)' : 'Surgeon'}
                   {u.role !== 'admin' && u.adminServiceIds.length > 0 && (
                     <div className="small muted">Team admin: {u.adminServiceIds.map((s) => serviceName.get(s) ?? s).join(', ')}</div>
                   )}
@@ -139,14 +159,24 @@ export function PeoplePage({ currentUserId }: { currentUserId: string }) {
                 <select value={draft.role} disabled={draft.id === currentUserId} onChange={(e) => setDraft({ ...draft, role: e.target.value as User['role'] })}>
                   <option value="surgeon">Surgeon (mobile app)</option>
                   <option value="admin">Admin (this console + app)</option>
-                  <option value="viewer">Viewer (read-only console, e.g. an assistant)</option>
+                  <option value="viewer">Viewer (sees the schedule in the app, e.g. an assistant)</option>
                 </select>
               </label>
               <label className="field">
-                Call share (FTE)
-                <select value={draft.fte} onChange={(e) => setDraft({ ...draft, fte: Number(e.target.value) })}>
-                  {[1, 0.9, 0.8, 0.75, 0.6, 0.5, 0.4, 0.25].map((f) => <option key={f} value={f}>{Math.round(f * 100)}%</option>)}
-                </select>
+                Call share (% of full time)
+                <span className="row" style={{ gap: 6 }}>
+                  <input
+                    type="number"
+                    min={0}
+                    max={150}
+                    step={1}
+                    required
+                    style={{ width: 90 }}
+                    value={Math.round(draft.fte * 1000) / 10}
+                    onChange={(e) => setDraft({ ...draft, fte: Number(e.target.value) / 100 })}
+                  />
+                  %
+                </span>
               </label>
               <div className="full row">
                 <label className="check"><input type="checkbox" checked={draft.takesCall} onChange={(e) => setDraft({ ...draft, takesCall: e.target.checked })} /> Takes call</label>
@@ -217,6 +247,11 @@ export function PeoplePage({ currentUserId }: { currentUserId: string }) {
               )}
             </div>
             <div className="row" style={{ marginTop: 16, justifyContent: 'flex-end' }}>
+              {draft.id && draft.id !== currentUserId && (
+                <button type="button" className="danger" style={{ marginRight: 'auto' }} onClick={() => remove(draft)}>
+                  Delete
+                </button>
+              )}
               <button type="button" onClick={() => dialog.current?.close()}>Cancel</button>
               <button className="primary" type="submit">Save</button>
             </div>

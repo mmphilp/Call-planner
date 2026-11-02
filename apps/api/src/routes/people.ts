@@ -3,10 +3,11 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { transaction, type Db } from '../db';
 import { LoginGuard } from '../login-guard';
-import { syncUnpublished } from '../sync';
+import { logShiftChange } from '../changelog';
+import { refreshCover, syncUnpublished } from '../sync';
 import { httpError, me, parse, requireAdmin, requireViewer } from '../http';
 import { hashPassword, verifyPassword } from '../passwords';
-import { getUser, getUserRowByEmail, listServices, listUsers, setUserAdminServices, setUserServices, toService } from '../repo';
+import { getUser, getUserRowByEmail, isLive, listPeriods, listServices, listUsers, setUserAdminServices, setUserServices, toService } from '../repo';
 
 // Field rules without defaults, so partial updates (PATCH) only touch the
 // fields actually sent. Creating applies the defaults.
@@ -178,6 +179,43 @@ export function peopleRoutes(app: FastifyInstance, db: Db) {
       if (body.adminServiceIds) setUserAdminServices(db, req.params.id, body.adminServiceIds);
     });
     return getUser(db, req.params.id);
+  });
+
+  /**
+   * Remove someone. If they're still on shifts, the first try reports how
+   * many (409) and `?force=1` removes them anyway, leaving those shifts open;
+   * changes to published shifts go in the change log. You can't delete yourself.
+   */
+  app.delete<{ Params: { id: string }; Querystring: { force?: string } }>('/api/users/:id', async (req, reply) => {
+    requireAdmin(req);
+    const user = getUser(db, req.params.id);
+    if (!user) throw httpError(404, 'User not found');
+    if (user.id === me(req).id) throw httpError(400, 'You can’t delete your own account');
+    const shifts = db
+      .prepare(
+        `SELECT s.id, s.service_id, p.id AS period_id FROM assignments a JOIN shifts s ON s.id = a.shift_id
+         JOIN periods p ON p.id = s.period_id WHERE a.user_id = ?`,
+      )
+      .all(user.id) as { id: string; service_id: string; period_id: string }[];
+    const periods = new Map(listPeriods(db).map((p) => [p.id, p]));
+    const live = shifts.filter((s) => isLive(periods.get(s.period_id)!, s.service_id));
+    if (shifts.length && req.query.force !== '1') {
+      reply.code(409);
+      return {
+        error: `${user.name} is on ${shifts.length} shift${shifts.length === 1 ? '' : 's'}`,
+        shiftCount: shifts.length,
+        publishedCount: live.length,
+      };
+    }
+    transaction(db, () => {
+      for (const s of live) {
+        logShiftChange(db, { shiftId: s.id, byUserId: me(req).id, via: 'edit', from: { userId: user.id, cover: null }, to: { userId: null, cover: null }, note: `${user.name} removed` });
+      }
+      db.prepare('DELETE FROM assignments WHERE user_id = ?').run(user.id);
+      db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
+    });
+    for (const periodId of new Set(shifts.map((s) => s.period_id))) refreshCover(db, periodId);
+    return { ok: true, openedShifts: shifts.length };
   });
 
   app.get('/api/services', async () => listServices(db));

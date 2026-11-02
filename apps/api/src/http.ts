@@ -57,9 +57,13 @@ export function canEditService(user: User, serviceId: string): boolean {
   return user.role === 'admin' || user.adminServiceIds.includes(serviceId);
 }
 
-/** Anyone who can see everything read-only: admins, team admins and viewers (e.g. an assistant). */
+/**
+ * Who can see the admin side (drafts, everyone's requests, reports, the
+ * roster): the overall admin and team admins. View-only accounts (e.g. an
+ * assistant) use the app like a surgeon who takes no call.
+ */
 export function canView(user: User): boolean {
-  return isScheduler(user) || user.role === 'viewer';
+  return isScheduler(user);
 }
 
 export function requireViewer(req: FastifyRequest): User {

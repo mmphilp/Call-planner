@@ -71,7 +71,7 @@ export function signoffRoutes(app: FastifyInstance, db: Db) {
   app.get<{ Params: { id: string } }>('/api/periods/:id/signoff', async (req) => {
     const user = me(req);
     const p = period(req);
-    const seeAll = canView(user) && (user.role === 'admin' || user.role === 'viewer');
+    const seeAll = user.role === 'admin';
     if (!seeAll && !user.adminServiceIds.length) throw httpError(403, 'Not allowed');
     const names = new Map(listUsers(db).map((u) => [u.id, u.name]));
     const surgeons = listUsers(db).filter((u) => u.active && u.takesCall);
