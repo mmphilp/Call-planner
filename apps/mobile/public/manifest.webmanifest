@@ -1,0 +1,12 @@
+{
+  "name": "Call Planner",
+  "short_name": "Call Planner",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#90021e",
+  "theme_color": "#90021e",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

@@ -2,6 +2,7 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'react-native';
 import { AuthProvider } from '@/lib/auth';
+import '@/lib/web-head';
 
 export default function RootLayout() {
   const scheme = useColorScheme();
