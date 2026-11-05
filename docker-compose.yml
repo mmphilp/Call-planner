@@ -1,11 +1,13 @@
 services:
   call-planner:
     build: .
-    image: call-planner
-    container_name: call-planner
+    # INSTANCE and HOST_PORT (in .env) let a second copy, e.g. a test site, run
+    # on the same server: INSTANCE=call-planner-test, HOST_PORT=4001.
+    image: ${INSTANCE:-call-planner}
+    container_name: ${INSTANCE:-call-planner}
     restart: unless-stopped
     ports:
-      - "4000:4000"
+      - "${HOST_PORT:-4000}:4000"
     volumes:
       - call-planner-data:/data
       # Daily database backups land in ./backups next to this file, so they're
