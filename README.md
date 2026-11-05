@@ -197,6 +197,30 @@ docker compose start call-planner
 
 Everyone stays signed in; the schedule is as it was when the backup was made.
 
+### Releases and the `dev` branch
+
+`main` is the released version: the live copy pulls it (`git pull && docker compose up -d --build`). Work in progress goes to the `dev` branch first and is merged into `main` as one release when it's ready, with a new version number and CHANGELOG entry.
+
+### 5. A test copy (optional)
+
+A second copy of the app on the same server, running the `dev` branch (work in progress) with its own database, for trying changes before they reach everyone. It shows a **Test copy** banner on every page.
+
+```bash
+cd ~/docker
+git clone -b dev https://github.com/mmphilp/Call-planner.git Call-planner-test
+cd Call-planner-test
+cp ../Call-planner/.env .env
+nano .env          # change/add: INSTANCE=call-planner-test, HOST_PORT=4001, INSTANCE_LABEL=Test copy,
+                   # BACKUP_KEEP=0, a different JWT_SECRET; remove CLOUDFLARE_TUNNEL_TOKEN
+mkdir -p backups && sudo chown 1000:1000 backups
+# Start it with a copy of the real data (use the newest file in ../Call-planner/backups):
+docker compose run --rm -v "$PWD/../Call-planner/backups:/restore:ro" --entrypoint sh call-planner -c \
+  'cp /restore/call-planner-2026-11-05.db /data/call-planner.db'
+docker compose up -d --build
+```
+
+It's at `http://<server>:4001`. To reach it from outside, add a published application route on your tunnel: `test.yourdomain.com` → `http://<server-LAN-IP>:4001`. Update it with `git pull && docker compose up -d --build` in that folder; refresh its data by repeating the copy step (stop it first with `docker compose stop`).
+
 ### Native iPhone/Android apps (optional)
 
 The web version at `/` covers what surgeons need. For App Store / Play Store apps: set `EXPO_PUBLIC_API_URL` to your public URL, change the `com.example.callplanner` bundle IDs in `apps/mobile/app.json`, then build and submit with EAS (`npx eas-cli build`, `npx eas-cli submit`). This needs an Apple Developer account and a Google Play Console account. Any build has to reach the server over HTTPS.

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Test copy support**: run a second copy on the same server (`INSTANCE`, `HOST_PORT` in `.env`), with a banner on every page (`INSTANCE_LABEL`, e.g. "Test copy") so it can't be mistaken for the real site. See README → A test copy.
+
 ## 1.0.3
 
 - **View-only accounts use the app only**: no admin console, and no access to drafts, requests, reports or the roster. They see published (and in-review) schedules in the app.

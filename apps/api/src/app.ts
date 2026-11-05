@@ -50,6 +50,8 @@ export interface AppOptions {
   trustProxy?: boolean;
   /** Who to contact about sign-in problems, shown on the sign-in pages. */
   supportEmail?: string;
+  /** Shown as a banner on every page, e.g. "Test copy", to tell a test site from the real one. */
+  instanceLabel?: string;
 }
 
 export async function buildApp(opts: AppOptions) {
@@ -99,7 +101,11 @@ export async function buildApp(opts: AppOptions) {
     }
   });
   // Public details for the sign-in pages.
-  app.get('/api/info', { config: { public: true } }, async () => ({ supportEmail: opts.supportEmail || null }));
+  app.get('/api/info', { config: { public: true } }, async () => ({
+    supportEmail: opts.supportEmail || null,
+    instanceLabel: opts.instanceLabel || null,
+    version: VERSION,
+  }));
   peopleRoutes(app, db);
   periodRoutes(app, db);
   requestRoutes(app, db);

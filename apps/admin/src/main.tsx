@@ -112,8 +112,20 @@ function App() {
   );
 }
 
+/** A strip across the top on a second copy (e.g. "Test copy"), so it can't be mistaken for the real site. */
+function InstanceBanner() {
+  const [label, setLabel] = useState<string | null>(null);
+  useEffect(() => {
+    get<{ instanceLabel: string | null }>('/api/info')
+      .then((i) => setLabel(i.instanceLabel))
+      .catch(() => {});
+  }, []);
+  return label ? <div className="instance-banner">{label} — changes here don’t affect the real schedule</div> : null;
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    <InstanceBanner />
     <App />
   </StrictMode>,
 );

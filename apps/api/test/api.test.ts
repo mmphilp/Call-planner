@@ -50,9 +50,9 @@ beforeEach(async () => {
 
 describe('auth', () => {
   it('shows the support contact on the sign-in page without signing in', async () => {
-    expect((await call(null, 'GET', '/api/info')).body).toEqual({ supportEmail: null });
-    const other = (await buildApp({ jwtSecret: 'test', supportEmail: 'help@x.org' })).app;
-    expect((await other.inject({ url: '/api/info' })).json()).toEqual({ supportEmail: 'help@x.org' });
+    expect((await call(null, 'GET', '/api/info')).body).toMatchObject({ supportEmail: null, instanceLabel: null });
+    const other = (await buildApp({ jwtSecret: 'test', supportEmail: 'help@x.org', instanceLabel: 'Test copy' })).app;
+    expect((await other.inject({ url: '/api/info' })).json()).toMatchObject({ supportEmail: 'help@x.org', instanceLabel: 'Test copy' });
   });
 
   it('rejects bad passwords and missing tokens', async () => {

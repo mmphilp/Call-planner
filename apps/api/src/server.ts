@@ -18,6 +18,7 @@ const { app, db } = await buildApp({
   appDir: env.APP_DIR,
   trustProxy: env.TRUST_PROXY === 'true',
   supportEmail: env.SUPPORT_EMAIL?.trim(),
+  instanceLabel: env.INSTANCE_LABEL?.trim(),
 });
 
 // First run: create the admin account from ADMIN_EMAIL / ADMIN_PASSWORD.
