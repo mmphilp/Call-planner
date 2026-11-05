@@ -142,6 +142,37 @@ describe('backups', () => {
   });
 });
 
+describe('test copy', () => {
+  it('loads a fresh copy of the live site’s data, in place', async () => {
+    // The "live" site: the app built in beforeEach, listening on a real port.
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    const port = (app.server.address() as { port: number }).port;
+    try {
+      const test = await buildApp({ jwtSecret: 'test-copy', instanceLabel: 'Test copy', liveUrl: `http://127.0.0.1:${port}` });
+      createUser(test.db, { email: 'tester@x.org', name: 'Tester', role: 'admin', takesCall: false, password: 'password123' });
+      const tok = (await test.app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'tester@x.org', password: 'password123' } })).json().token;
+      const copy = (payload: object) =>
+        test.app.inject({ method: 'POST', url: '/api/test/copy-live', payload, headers: { authorization: `Bearer ${tok}` } });
+
+      expect((await test.app.inject({ url: '/api/info' })).json().canCopyLive).toBe(true);
+      expect((await copy({ email: 'admin@x.org', password: 'wrong' })).statusCode).toBe(400);
+      expect((await copy({ email: 's1@x.org', password: 'password123' })).json().error).toMatch(/Live site: Admin access required/);
+      const ok = (await copy({ email: 'admin@x.org', password: 'password123' })).json();
+      expect(ok).toMatchObject({ ok: true, users: 9 });
+      // The test copy now has the live users (and live passwords); its own account is gone.
+      const users = test.db.prepare('SELECT email FROM users ORDER BY email').all().map((r: any) => r.email);
+      expect(users).toContain('admin@x.org');
+      expect(users).not.toContain('tester@x.org');
+      expect((await test.app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 's3@x.org', password: 'password123' } })).statusCode).toBe(200);
+    } finally {
+      await app.close();
+    }
+    // Not available on the live site itself.
+    const plain = (await buildApp({ jwtSecret: 'x' })).app;
+    expect((await plain.inject({ url: '/api/info' })).json().canCopyLive).toBe(false);
+  });
+});
+
 describe('partial updates', () => {
   it('saves a service calendar label without touching anything else', async () => {
     const before = (await call(adminToken, 'GET', '/api/services')).body.find((s: any) => s.id === 'general');

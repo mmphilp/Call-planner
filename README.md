@@ -219,6 +219,8 @@ docker compose run --rm -v "$PWD/../Call-planner/backups:/restore:ro" --entrypoi
 docker compose up -d --build
 ```
 
+Even simpler for refreshing its data: add `LIVE_URL=http://<server-LAN-IP>:4000` to the test copy's `.env` (then `docker compose up -d`). Its admin console gets **Copy live data** in the sidebar: enter the live site's admin email and password and it loads a fresh copy of everything. The live site isn't changed.
+
 It's at `http://<server>:4001`. To reach it from outside, add a published application route on your tunnel: `test.yourdomain.com` → `http://<server-LAN-IP>:4001`. Update it with `git pull && docker compose up -d --build` in that folder; refresh its data by repeating the copy step (stop it first with `docker compose stop`).
 
 ### Native iPhone/Android apps (optional)

@@ -7,6 +7,7 @@ import jwt from '@fastify/jwt';
 import fastifyStatic from '@fastify/static';
 import Fastify from 'fastify';
 import { backupTo } from './backup';
+import { liveCopyRoutes } from './livecopy';
 import { openDb, type Db } from './db';
 import { HttpError } from './http';
 import { getUser } from './repo';
@@ -52,6 +53,11 @@ export interface AppOptions {
   supportEmail?: string;
   /** Shown as a banner on every page, e.g. "Test copy", to tell a test site from the real one. */
   instanceLabel?: string;
+  /**
+   * On a test copy: the live site's address (e.g. http://192.168.1.153:4000),
+   * so the admin can load a fresh copy of the live data from the console.
+   */
+  liveUrl?: string;
 }
 
 export async function buildApp(opts: AppOptions) {
@@ -104,6 +110,8 @@ export async function buildApp(opts: AppOptions) {
   app.get('/api/info', { config: { public: true } }, async () => ({
     supportEmail: opts.supportEmail || null,
     instanceLabel: opts.instanceLabel || null,
+    // A test copy that can load the live site's data (see livecopy.ts).
+    canCopyLive: !!opts.liveUrl,
     version: VERSION,
   }));
   peopleRoutes(app, db);
@@ -113,6 +121,7 @@ export async function buildApp(opts: AppOptions) {
   tradeRoutes(app, db);
   flagRoutes(app, db);
   signoffRoutes(app, db);
+  liveCopyRoutes(app, db, opts.liveUrl);
   calendarRoutes(app, db);
 
   const hasBuild = (dir?: string): dir is string => !!dir && existsSync(resolve(dir, 'index.html'));

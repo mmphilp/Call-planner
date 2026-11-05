@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Test copy support**: run a second copy on the same server (`INSTANCE`, `HOST_PORT` in `.env`), with a banner on every page (`INSTANCE_LABEL`, e.g. "Test copy") so it can't be mistaken for the real site. See README → A test copy.
+- **Copy live data** (test copy only, with `LIVE_URL` set): the admin console's sidebar gets a page that replaces the test copy's data with a fresh copy of the live site's, using the live admin's email and password once. Nothing on the live site changes.
 
 ## 1.0.3
 

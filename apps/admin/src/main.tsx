@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom';
 import { auth, get, type User } from './api';
 import { ChangePassword } from './pages/ChangePassword';
+import { CopyLivePage } from './pages/CopyLive';
 import { Login } from './pages/Login';
 import { PeoplePage } from './pages/People';
 import { PeriodPage } from './pages/Period';
@@ -29,6 +30,13 @@ async function downloadBackup() {
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(!!auth.token);
+  // A test copy that can load the live site's data.
+  const [canCopyLive, setCanCopyLive] = useState(false);
+  useEffect(() => {
+    get<{ canCopyLive?: boolean }>('/api/info')
+      .then((i) => setCanCopyLive(!!i.canCopyLive))
+      .catch(() => {});
+  }, []);
 
   const loadMe = useCallback(() => {
     if (!auth.token) return setChecking(false);
@@ -79,6 +87,7 @@ function App() {
           <div className="spacer" />
           {/* The surgeon app lives at the site root and shares this sign-in. */}
           <a href="/">{user.takesCall ? 'My schedule' : 'Open the app'} ↗</a>
+          {isSuper && canCopyLive && <NavLink to="/copy-live">Copy live data</NavLink>}
           <NavLink to="/password" className="small">Change password</NavLink>
           {isSuper && (
             <a href="/api/backup" className="small" onClick={(e) => (e.preventDefault(), downloadBackup())} title="A full copy of the database, to keep somewhere safe">
@@ -103,6 +112,7 @@ function App() {
             {isSuper && <Route path="/people" element={<PeoplePage currentUserId={user.id} />} />}
             {isSuper && <Route path="/services" element={<ServicesPage />} />}
             <Route path="/password" element={<ChangePassword onDone={setUser} />} />
+            {isSuper && canCopyLive && <Route path="/copy-live" element={<CopyLivePage />} />}
             <Route path="*" element={<Navigate to="/periods" replace />} />
           </Routes>
         </main>
