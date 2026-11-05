@@ -129,6 +129,34 @@ describe('generateShifts', () => {
     expect(ids.has('crs:day:2026-10-15')).toBe(true);
   });
 
+  it('lets weekend services take over Friday nights and holidays only at their own hospitals', () => {
+    const crsA: Service = { id: 'crs-a', name: 'Colorectal A', coversWeekdayDay: true, coversWeekdayNight: true, coversWeekend: false, hospitalIds: ['a'] };
+    const crsB: Service = { id: 'crs-b', name: 'Colorectal B', coversWeekdayDay: true, coversWeekdayNight: true, coversWeekend: false, hospitalIds: ['b'] };
+    const both: Service = { id: 'endo', name: 'Endocrine', coversWeekdayDay: true, coversWeekdayNight: true, coversWeekend: false, hospitalIds: ['a', 'b'] };
+    const weekendA: Service = { id: 'wk-a', name: 'Specialty Coverage A', coversWeekdayDay: false, coversWeekdayNight: false, coversWeekend: true, hospitalIds: ['a'] };
+    // Week of Thanksgiving 2026 (Thu 11/26 holiday, Fri 11/27 bridge day).
+    const shifts = generateShifts({
+      start: '2026-11-23',
+      end: '2026-11-29',
+      services: [crsA, crsB, both, weekendA],
+      holidays: ['2026-11-26'],
+      bridgeDays: ['2026-11-27'],
+    });
+    const ids = new Set(shifts.map((s) => s.id));
+    // Hospital A: the weekend service has Thanksgiving through Monday; the A team has nothing then.
+    expect(ids.has('wk-a:weekend:2026-11-27')).toBe(true);
+    expect(ids.has('crs-a:day:2026-11-26')).toBe(false);
+    expect(ids.has('crs-a:night:2026-11-27')).toBe(false);
+    // A service at both hospitals shares one with a weekend service, so it's covered too.
+    expect(ids.has('endo:day:2026-11-26')).toBe(false);
+    // Hospital B has no weekend service: its team keeps Thanksgiving and Friday night.
+    expect(ids.has('crs-b:day:2026-11-26')).toBe(true);
+    expect(ids.has('crs-b:night:2026-11-26')).toBe(true);
+    expect(ids.has('crs-b:night:2026-11-27')).toBe(true);
+    // An ordinary Monday is the same everywhere.
+    for (const s of ['crs-a', 'crs-b', 'endo']) expect(ids.has(`${s}:day:2026-11-23`)).toBe(true);
+  });
+
   it('keeps weekday holiday shifts for a group with no weekend service', () => {
     const weekdaysOnly: Service = { ...general, coversWeekend: false };
     const shifts = generateShifts({ start: '2026-11-23', end: '2026-11-29', services: [weekdaysOnly], holidays: ['2026-11-26'] });

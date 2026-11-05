@@ -13,6 +13,12 @@ export interface Service {
   name: string;
   /** Short label for calendars, e.g. "CRS" for Colorectal. Empty = worked out from the name. */
   shortName?: string;
+  /**
+   * Hospitals this service covers. Empty or missing = every hospital (and a
+   * group with no hospitals set up). A weekend service only takes over the
+   * Friday nights and holidays of weekday services at the same hospitals.
+   */
+  hospitalIds?: string[];
   color?: string;
   coversWeekdayDay: boolean;
   coversWeekdayNight: boolean;

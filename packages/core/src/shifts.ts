@@ -27,6 +27,12 @@ export const DAY_END = '17:00';
 /** A mid-week holiday block (e.g. Thanksgiving): a weekend-kind shift not dated on a Friday. */
 export const isHolidayBlock = (s: { kind: ShiftKind; date: DateStr }) => s.kind === 'weekend' && dayOfWeek(s.date) !== 5;
 
+/** Do two services cover any of the same hospitals? (No hospitals listed = all of them.) */
+export function sameHospital(a: { hospitalIds?: string[] }, b: { hospitalIds?: string[] }) {
+  if (!a.hospitalIds?.length || !b.hospitalIds?.length) return true;
+  return a.hospitalIds.some((h) => b.hospitalIds!.includes(h));
+}
+
 export function shiftId(serviceId: string, kind: ShiftKind, date: DateStr): string {
   return `${serviceId}:${kind}:${date}`;
 }
@@ -41,12 +47,17 @@ export function generateShifts(opts: GenerateOptions): Shift[] {
   const extend = opts.extendWeekendsForHolidays ?? true;
   const shifts: Shift[] = [];
 
-  // Weekend blocks cover the whole group: when any service has them, no
-  // service gets weekday shifts inside a block (Friday night, or the nights
-  // and days a holiday folds into the weekend). Weekday holidays work the
-  // same way: only the weekend services cover them, in a holiday block.
+  // Weekend blocks cover the whole group at their hospitals: a weekday
+  // service at a hospital with a weekend service gets no shifts inside a
+  // block (Friday night, or the nights and days a holiday folds into the
+  // weekend). Weekday holidays work the same way: only the weekend services
+  // cover them, in a holiday block. A hospital with no weekend service keeps
+  // its weekday call.
   const absorbed = new Set<string>();
-  const hasWeekendBlocks = opts.services.some((s) => s.coversWeekend);
+  const weekendServices = opts.services.filter((s) => s.coversWeekend);
+  const hasWeekendBlocks = weekendServices.length > 0;
+  /** Is this service's weekday call taken over by a weekend service at its hospital? */
+  const underWeekend = (s: Service) => weekendServices.some((w) => w.id !== s.id && sameHospital(w, s)) || s.coversWeekend;
   const isWeekday = (d: DateStr) => dayOfWeek(d) !== 0 && dayOfWeek(d) !== 6;
 
   // Days off for the teams: holidays, plus bridge days (e.g. the Friday
@@ -113,7 +124,8 @@ export function generateShifts(opts: GenerateOptions): Shift[] {
     if (dow === 0 || dow === 6) continue;
     for (const service of opts.services) {
       const isHoliday = holidays.has(date) || undefined;
-      if (service.coversWeekdayDay && !absorbed.has(`${date}|day`)) {
+      const covered = underWeekend(service);
+      if (service.coversWeekdayDay && !(covered && absorbed.has(`${date}|day`))) {
         shifts.push({
           id: shiftId(service.id, 'day', date),
           serviceId: service.id,
@@ -124,9 +136,9 @@ export function generateShifts(opts: GenerateOptions): Shift[] {
           holiday: isHoliday,
         });
       }
-      // Friday night is part of the weekend block.
-      const fridayCoveredByWeekend = dow === 5 && hasWeekendBlocks;
-      if (service.coversWeekdayNight && !fridayCoveredByWeekend && !absorbed.has(`${date}|night`)) {
+      // Friday night is part of the weekend block (at hospitals with one).
+      const fridayCoveredByWeekend = dow === 5 && covered;
+      if (service.coversWeekdayNight && !fridayCoveredByWeekend && !(covered && absorbed.has(`${date}|night`))) {
         shifts.push({
           id: shiftId(service.id, 'night', date),
           serviceId: service.id,

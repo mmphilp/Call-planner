@@ -7,7 +7,7 @@ import { logShiftChange } from '../changelog';
 import { refreshCover, syncUnpublished } from '../sync';
 import { httpError, me, parse, requireAdmin, requireViewer } from '../http';
 import { hashPassword, verifyPassword } from '../passwords';
-import { getUser, getUserRowByEmail, isLive, listPeriods, listServices, listUsers, setUserAdminServices, setUserServices, toService } from '../repo';
+import { getService, getUser, getUserRowByEmail, isLive, listPeriods, listServices, listUsers, setServiceHospitals, setUserAdminServices, setUserServices } from '../repo';
 
 // Field rules without defaults, so partial updates (PATCH) only touch the
 // fields actually sent. Creating applies the defaults.
@@ -46,8 +46,11 @@ const serviceFields = z.object({
   coversWeekdayNight: z.boolean(),
   coversWeekend: z.boolean(),
   sort: z.number().int(),
+  /** Hospitals this service covers; empty = all of them. */
+  hospitalIds: z.array(z.string()),
 });
 const serviceBody = serviceFields.extend({
+  hospitalIds: serviceFields.shape.hospitalIds.default([]),
   shortName: serviceFields.shape.shortName.default(''),
   color: serviceFields.shape.color.default('#2563eb'),
   coversWeekdayDay: serviceFields.shape.coversWeekdayDay.default(true),
@@ -229,9 +232,10 @@ export function peopleRoutes(app: FastifyInstance, db: Db) {
       `INSERT INTO services (id, name, short_name, color, covers_day, covers_night, covers_weekend, sort)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(id, s.name, s.shortName, s.color, +s.coversWeekdayDay, +s.coversWeekdayNight, +s.coversWeekend, s.sort);
+    setServiceHospitals(db, id, s.hospitalIds);
     syncUnpublished(db);
     reply.code(201);
-    return toService(db.prepare('SELECT * FROM services WHERE id = ?').get(id) as any);
+    return getService(db, id);
   });
 
   app.patch<{ Params: { id: string } }>('/api/services/:id', async (req) => {
@@ -251,11 +255,13 @@ export function peopleRoutes(app: FastifyInstance, db: Db) {
     }
     const row = db.prepare('SELECT * FROM services WHERE id = ?').get(req.params.id);
     if (!row) throw httpError(404, 'Service not found');
-    // Coverage changes take effect on every unpublished schedule right away.
-    if (s.coversWeekdayDay !== undefined || s.coversWeekdayNight !== undefined || s.coversWeekend !== undefined) {
+    if (s.hospitalIds) setServiceHospitals(db, req.params.id, s.hospitalIds);
+    // Coverage (and hospital) changes take effect on every unpublished schedule right away:
+    // which hospitals a weekend service covers decides whose Friday nights and holidays it takes.
+    if (s.coversWeekdayDay !== undefined || s.coversWeekdayNight !== undefined || s.coversWeekend !== undefined || s.hospitalIds) {
       syncUnpublished(db);
     }
-    return toService(row as any);
+    return getService(db, req.params.id);
   });
 
   app.delete<{ Params: { id: string } }>('/api/services/:id', async (req) => {

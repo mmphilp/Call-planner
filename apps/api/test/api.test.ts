@@ -173,6 +173,41 @@ describe('test copy', () => {
   });
 });
 
+describe('hospitals', () => {
+  it('lets services cover particular hospitals, with weekend services taking over only at theirs', async () => {
+    expect((await call(surgeonTokens[0], 'POST', '/api/hospitals', { name: 'Temple' })).status).toBe(403);
+    const temple = (await call(adminToken, 'POST', '/api/hospitals', { name: 'Temple', shortName: 'TUH' })).body;
+    const jeanes = (await call(adminToken, 'POST', '/api/hospitals', { name: 'Jeanes', shortName: 'JH' })).body;
+    expect((await call(adminToken, 'POST', '/api/hospitals', { name: 'temple' })).status).toBe(409);
+    expect((await call(surgeonTokens[0], 'GET', '/api/hospitals')).body.map((h: any) => h.name)).toEqual(['Jeanes', 'Temple']);
+
+    // General (weekdays and weekends) only at Temple; a Jeanes team for weekdays.
+    await call(adminToken, 'PATCH', '/api/services/general', { hospitalIds: [temple.id] });
+    const jeanesTeam = (await call(adminToken, 'POST', '/api/services', {
+      name: 'Colorectal Jeanes', coversWeekdayDay: true, coversWeekdayNight: true, coversWeekend: false, hospitalIds: [jeanes.id],
+    })).body;
+    expect(jeanesTeam.hospitalIds).toEqual([jeanes.id]);
+    const services = (await call(adminToken, 'GET', '/api/services')).body;
+    expect(services.find((x: any) => x.id === 'general').hospitalIds).toEqual([temple.id]);
+    expect(services.find((x: any) => x.id === 'hand').hospitalIds).toEqual([]); // all hospitals
+
+    const { body: p } = await call(adminToken, 'POST', '/api/periods', { year: 2027, half: 2 });
+    const ids = new Set((await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`)).body.shifts.map((x: any) => x.id));
+    // Friday night 2027-07-09: Temple's weekend service has it; Jeanes keeps its own.
+    expect(ids.has('general:weekend:2027-07-09')).toBe(true);
+    expect(ids.has('colorectal-jeanes:night:2027-07-09')).toBe(true);
+    // Labor Day 2027-09-06: Jeanes team still on call; Hand (all hospitals, incl. Temple) isn't.
+    expect(ids.has('colorectal-jeanes:day:2027-09-06')).toBe(true);
+    expect(ids.has('hand:day:2027-09-06')).toBe(false);
+
+    // Removing a hospital takes it off services and rebuilds unpublished schedules.
+    await call(adminToken, 'DELETE', `/api/hospitals/${jeanes.id}`);
+    expect((await call(adminToken, 'GET', '/api/services')).body.find((x: any) => x.id === 'colorectal-jeanes').hospitalIds).toEqual([]);
+    const after = new Set((await call(adminToken, 'GET', `/api/periods/${p.id}/schedule`)).body.shifts.map((x: any) => x.id));
+    expect(after.has('colorectal-jeanes:night:2027-07-09')).toBe(false);
+  });
+});
+
 describe('partial updates', () => {
   it('saves a service calendar label without touching anything else', async () => {
     const before = (await call(adminToken, 'GET', '/api/services')).body.find((s: any) => s.id === 'general');

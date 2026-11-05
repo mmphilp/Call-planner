@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, View } from 'react-native';
 import { MonthCoverage } from '@/components/MonthCoverage';
 import { Badge, Card, Chip, Empty, ErrorText, Screen, SectionHeader, T, useApi } from '@/components/ui';
-import { api, type Flag, type Period, type Schedule } from '@/lib/api';
+import { api, type Flag, type Hospital, type Period, type Schedule } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { addDays, dayOfWeek, holidayMap, kindLabel, longDate, monthDay, monthLabel, nowLocal, shiftSpan, todayStr } from '@/lib/format';
 import { useTheme } from '@/lib/theme';
@@ -124,6 +124,13 @@ export default function ScheduleScreen() {
     else next.add(id);
     setShown(next);
   };
+  // Hospital quick picks: every service at that hospital (services covering all hospitals included).
+  const [hospitals, setHospitals] = useState<Hospital[]>([]);
+  useEffect(() => {
+    api<Hospital[]>('GET', '/api/hospitals').then(setHospitals).catch(() => {});
+  }, []);
+  const hospitalPicks = hospitals.filter((h) => allServices.some((sv) => sv.hospitalIds?.includes(h.id)));
+  const atHospital = (sv: { hospitalIds?: string[] }, id: string) => !sv.hospitalIds?.length || sv.hospitalIds.includes(id);
   const isDefault = [...defaultShown].every((id) => visible.has(id)) && visible.size === defaultShown.size;
 
   const people = useMemo(() => new Map(schedule?.people.map((p) => [p.id, p])), [schedule]);
@@ -227,6 +234,23 @@ export default function ScheduleScreen() {
               )}
             </View>
           </View>
+          {hospitalPicks.length > 0 && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+              <T muted size={13}>Hospital:</T>
+              {hospitalPicks.map((h) => {
+                const ids = allServices.filter((sv) => atHospital(sv, h.id)).map((sv) => sv.id);
+                const active = ids.length === visible.size && ids.every((id) => visible.has(id));
+                return (
+                  <Chip
+                    key={h.id}
+                    label={h.shortName || h.name}
+                    selected={active}
+                    onPress={() => setShown(active ? null : new Set(ids))}
+                  />
+                );
+              })}
+            </View>
+          )}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
             {allServices.map((sv) => {
               const on = visible.has(sv.id);

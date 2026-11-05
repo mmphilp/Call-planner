@@ -14,6 +14,7 @@ import { getUser } from './repo';
 import { calendarRoutes } from './routes/calendar';
 import { peopleRoutes } from './routes/people';
 import { flagRoutes } from './routes/flags';
+import { hospitalRoutes } from './routes/hospitals';
 import { periodRoutes } from './routes/periods';
 import { signoffRoutes } from './routes/signoff';
 import { requestRoutes } from './routes/requests';
@@ -120,6 +121,7 @@ export async function buildApp(opts: AppOptions) {
   routineRoutes(app, db);
   tradeRoutes(app, db);
   flagRoutes(app, db);
+  hospitalRoutes(app, db);
   signoffRoutes(app, db);
   liveCopyRoutes(app, db, opts.liveUrl);
   calendarRoutes(app, db);

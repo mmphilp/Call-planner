@@ -70,7 +70,7 @@ export interface Shift {
 
 export interface Schedule {
   period: Period;
-  services: { id: string; name: string; color: string; coversWeekend?: boolean }[];
+  services: { id: string; name: string; color: string; coversWeekend?: boolean; hospitalIds?: string[] }[];
   shifts: Shift[];
   assignments: { shiftId: string; userId: string }[];
   people: { id: string; name: string; phone: string | null }[];
@@ -123,6 +123,13 @@ export interface MyApproval {
   at: string;
   note: string;
   current: boolean;
+}
+
+/** A hospital the group covers. */
+export interface Hospital {
+  id: string;
+  name: string;
+  shortName: string;
 }
 
 export interface CallRequest {

@@ -151,8 +151,47 @@ export function toService(
   };
 }
 
+/** Which hospitals each service covers (services with none cover all). */
+function hospitalsByService(db: Db) {
+  const m = new Map<string, string[]>();
+  for (const r of db.prepare('SELECT service_id, hospital_id FROM service_hospitals ORDER BY hospital_id').all() as Row[]) {
+    m.set(r.service_id, [...(m.get(r.service_id) ?? []), r.hospital_id]);
+  }
+  return m;
+}
+
 export function listServices(db: Db) {
-  return (db.prepare('SELECT * FROM services ORDER BY sort, name').all() as Row[]).map(toService);
+  const hospitals = hospitalsByService(db);
+  return (db.prepare('SELECT * FROM services ORDER BY sort, name').all() as Row[]).map((r) => ({
+    ...toService(r),
+    hospitalIds: hospitals.get(r.id) ?? [],
+  }));
+}
+
+export function getService(db: Db, id: string) {
+  return listServices(db).find((s) => s.id === id);
+}
+
+export function setServiceHospitals(db: Db, serviceId: string, hospitalIds: string[]) {
+  db.prepare('DELETE FROM service_hospitals WHERE service_id = ?').run(serviceId);
+  const ins = db.prepare('INSERT OR IGNORE INTO service_hospitals (service_id, hospital_id) VALUES (?, ?)');
+  for (const h of hospitalIds) ins.run(serviceId, h);
+}
+
+export interface Hospital {
+  id: string;
+  name: string;
+  shortName: string;
+  sort: number;
+}
+
+export function listHospitals(db: Db): Hospital[] {
+  return (db.prepare('SELECT * FROM hospitals ORDER BY sort, name').all() as Row[]).map((r) => ({
+    id: r.id,
+    name: r.name,
+    shortName: r.short_name,
+    sort: r.sort,
+  }));
 }
 
 function toPeriod(r: Row): Period {

@@ -49,6 +49,20 @@ CREATE TABLE IF NOT EXISTS user_services (
 );
 
 -- Surgeons who manage weekday call for a service (their team).
+-- Hospitals the group covers. Each service lists the ones it covers
+-- (none listed = all of them).
+CREATE TABLE IF NOT EXISTS hospitals (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  short_name TEXT NOT NULL DEFAULT '',
+  sort INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS service_hospitals (
+  service_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+  hospital_id TEXT NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
+  PRIMARY KEY (service_id, hospital_id)
+);
+
 CREATE TABLE IF NOT EXISTS service_admins (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   service_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,

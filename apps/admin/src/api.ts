@@ -68,6 +68,15 @@ export interface Schedule {
   changedShiftIds?: string[];
 }
 
+/** A hospital the group covers. */
+export interface Hospital {
+  id: string;
+  name: string;
+  /** e.g. "TUH", used in filters and labels. */
+  shortName: string;
+  sort: number;
+}
+
 /** One entry in a schedule's change log (overall admin only). */
 export interface ChangeEntry {
   id: string;
