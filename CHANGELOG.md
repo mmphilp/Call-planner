@@ -5,6 +5,7 @@
 - **Multiple hospitals.** Add hospitals on the Services page and tick which ones each service covers (none = all). Different surgeons at each hospital: a service per hospital; one surgeon covering several: one service ticked for all of them. Surgeons who rotate tick each under *Can cover*; fair share stays combined.
 - **Weekends per hospital.** A weekend service takes over Friday nights and observed holidays only at the hospitals it covers; a hospital with no weekend service keeps its weekday teams' Friday night and holiday call. Several weekend services can split the hospitals between them.
 - **Hospital filter** on the console's calendar and grids, and in the app's Schedule tab.
+- **Fairness tab: Total · By service · By hospital.** See each surgeon's call on each service and at each hospital (shift counts with days/nights/weekends), with row and column totals.
 - **Test copy support**: run a second copy on the same server (`INSTANCE`, `HOST_PORT` in `.env`), with a banner on every page (`INSTANCE_LABEL`, e.g. "Test copy") so it can't be mistaken for the real site. See README → A test copy.
 - **Copy live data** (test copy only, with `LIVE_URL` set): the admin console's sidebar gets a page that replaces the test copy's data with a fresh copy of the live site's, using the live admin's email and password once. Nothing on the live site changes.
 
